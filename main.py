@@ -2,6 +2,9 @@
 import logging
 from telegram.ext import Application, MessageHandler, filters
 from config import BOT_TOKEN
+from data import db_session
+db_session.global_init("db/air_quant_15.sqlite")
+
 
 # Запускаем логгирование
 logging.basicConfig(
