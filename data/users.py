@@ -20,7 +20,6 @@ class Student(SqlAlchemyBase):
     telegram_id = Column(Integer, unique=True)
     results = sqlalchemy.orm.relationship("FlightResult", back_populates="student")
 
-
 class Mentor(SqlAlchemyBase):
     __tablename__ = "mentors"
 
