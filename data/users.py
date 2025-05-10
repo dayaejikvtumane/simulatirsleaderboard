@@ -3,6 +3,7 @@ from sqlalchemy import Column, String, Date, Integer, ForeignKey, Float
 from .db_session import SqlAlchemyBase
 import datetime
 
+
 """БД состоит из трех таблиц, одна - ученик и информация о нем (ИД, имя, фамилия, группа
 Дата рождения, тг). Эта таблиуа связана с таблицей рещультытов полета
 вторая таблица - наставник. содержит информацию о наставнике (ИД, имя, фамилия, группа, ТГ)
@@ -31,16 +32,17 @@ class Mentor(SqlAlchemyBase):
     telegram_id = Column(Integer, unique=True)
 
 
+from sqlalchemy import Column, String, Date, Integer, ForeignKey, Float, LargeBinary, DateTime
+
 class FlightResult(SqlAlchemyBase):
     __tablename__ = "flight_results"
-
     id = Column(Integer, primary_key=True)
     student_id = Column(Integer, ForeignKey("students.id"))
     simulator = Column(String, nullable=False)
     map_name = Column(String, nullable=False)
     flight_mode = Column(String, nullable=False)
     time = Column(Float, nullable=False)
-    photo_path = Column(String)
-    date_added = Column(Date, default=datetime.datetime.now())
+    photo_data = Column(LargeBinary)  # Добавляем это поле для хранения фото
+    date_added = Column(Date, default=datetime.datetime.now)
 
     student = sqlalchemy.orm.relationship("Student", back_populates="results")
