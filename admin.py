@@ -62,7 +62,7 @@ async def change_data_handler(update, context):
     await context.bot.send_document(
         chat_id=update.effective_chat.id,
         document=InputFile(csv_bytes, filename='Flight_Results.csv'),
-        caption="Данные полетов"
+        caption="пришлите измененный CSV файл"
     )
 
 
