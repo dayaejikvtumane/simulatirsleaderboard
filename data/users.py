@@ -1,13 +1,16 @@
+import datetime
+
 import sqlalchemy.orm
 from sqlalchemy import Column, String, Date, Integer, ForeignKey, Float
+
 from .db_session import SqlAlchemyBase
-import datetime
 
 """БД состоит из трех таблиц, одна - ученик и информация о нем (ИД, имя, фамилия, группа
 Дата рождения, тг). Эта таблиуа связана с таблицей рещультытов полета
 вторая таблица - наставник. содержит информацию о наставнике (ИД, имя, фамилия, группа, ТГ)
 третья - рещультаты полета(ИД ученика(из таблицы Student) симулятор, карта, режим полета,
 время, путь к фото, дата добавлния)"""
+
 
 class Student(SqlAlchemyBase):
     __tablename__ = "students"
@@ -19,6 +22,7 @@ class Student(SqlAlchemyBase):
     birth_date = Column(Date)
     telegram_id = Column(Integer, unique=True)
     results = sqlalchemy.orm.relationship("FlightResult", back_populates="student")
+
 
 class Mentor(SqlAlchemyBase):
     __tablename__ = "mentors"
