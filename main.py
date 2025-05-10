@@ -2,7 +2,7 @@ import logging
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from config import BOT_TOKEN, ADMIN_ID
 from data.db_session import global_init
-from admin import admin_menu, button_click, handle_admin_message
+from admin import admin_menu, button_click, handle_admin_message, handle_csv_update
 from student import register_student_handlers
 
 # Настройка логирования
@@ -42,6 +42,7 @@ def main():
     register_admin_handlers(application)
     register_student_handlers(application)
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.Document.FileExtension("csv"), handle_csv_update))
     application.run_polling()
 
 
