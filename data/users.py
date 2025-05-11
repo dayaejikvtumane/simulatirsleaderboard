@@ -42,7 +42,7 @@ class FlightResult(SqlAlchemyBase):
     map_name = Column(String, nullable=False)
     flight_mode = Column(String, nullable=False)
     time = Column(Float, nullable=False)
-    photo_data = Column(LargeBinary)  # Добавляем это поле для хранения фото
+    photo_data = Column(LargeBinary)
     date_added = Column(Date, default=datetime.datetime.now)
 
     student = sqlalchemy.orm.relationship("Student", back_populates="results")
