@@ -2,9 +2,59 @@ from telegram import ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import MessageHandler, filters, ConversationHandler, CommandHandler, Application
 from data.db_session import create_session
 from data.users import Mentor, Student, FlightResult
+from config import ADMIN_ID
 
 MENTOR_NAME, MENTOR_SURNAME, MENTOR_GROUP = range(13, 16)
 CHECK_GROUP, CHECK_STUDENT = range(16, 18)
+
+ADD_MENTOR = 18
+
+
+async def add_mentor_start(update, context):
+    if not is_mentor(update.effective_user.id, ADMIN_ID):
+        await update.message.reply_text('Эта команда доступна только администраторам.')
+        return ConversationHandler.END
+
+    await update.message.reply_text(
+        'Введите Telegram ID нового наставника:',
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ADD_MENTOR
+
+
+async def add_mentor_id(update, context):
+    try:
+        new_mentor_id = int(update.message.text.strip())
+        if new_mentor_id <= 0:
+            raise ValueError("ID должен быть положительным числом")
+        with open("admin.txt", "a+") as f:
+            f.seek(0)
+            existing_ids = [line.strip() for line in f.readlines() if line.strip()]
+
+            if str(new_mentor_id) in existing_ids:
+                await update.message.reply_text('Этот наставник уже есть в списке.')
+                return await show_mentor_menu(update, context, show_welcome=False)
+
+            f.write(f"\n{new_mentor_id}")
+
+        keyboard = [
+            [KeyboardButton('Проверить результаты учеников')],
+            [KeyboardButton('Рейтинг')],
+            [KeyboardButton('Мои группы')],
+            [KeyboardButton('Добавить наставника')]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+        await update.message.reply_text(
+            f"Наставник с ID {new_mentor_id} успешно добавлен!",
+            reply_markup=reply_markup
+        )
+
+    except ValueError as e:
+        await update.message.reply_text(f"Некорректный ID: {e}\nПопробуйте еще раз.")
+        return ADD_MENTOR
+
+    return ConversationHandler.END
 
 
 def is_mentor(telegram_id, admin_id):
@@ -95,6 +145,11 @@ async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
         [KeyboardButton('Рейтинг')],
         [KeyboardButton('Мои группы')]
     ]
+
+    # Добавляем кнопку для администраторов
+    if is_mentor(update.effective_user.id, ADMIN_ID):
+        keyboard.append([KeyboardButton('Добавить наставника')])
+
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
     if show_welcome:
@@ -109,7 +164,6 @@ async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
             reply_markup=reply_markup
         )
     return ConversationHandler.END
-
 
 async def cancel_mentor_registration(update, context):
     await update.message.reply_text(
@@ -227,12 +281,23 @@ async def show_mentor_groups(update, context):
 
 
 def register_mentor_handlers(application: Application, admin_id):
+    # Обработчик проверки результатов студентов
     check_results_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex(r'^Проверить результаты учеников$') & ~filters.COMMAND,
                                      check_student_results)],
         states={
             CHECK_GROUP: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_check_group)],
             CHECK_STUDENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_check_student)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
+    )
+
+    # Обработчик добавления наставников
+    add_mentor_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex(r'^Добавить наставника$') & ~filters.COMMAND,
+                                     add_mentor_start)],
+        states={
+            ADD_MENTOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_mentor_id)],
         },
         fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
     )
@@ -244,3 +309,4 @@ def register_mentor_handlers(application: Application, admin_id):
 
     application.add_handler(check_results_handler)
     application.add_handler(groups_handler)
+    application.add_handler(add_mentor_handler)

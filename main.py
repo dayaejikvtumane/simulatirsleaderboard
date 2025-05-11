@@ -50,6 +50,7 @@ async def start(update, context):
                 keyboard = [
                     [KeyboardButton('Проверить результаты учеников')],
                     [KeyboardButton('Рейтинг')],
+                    [KeyboardButton('Добавить наставника')],
                     [KeyboardButton('Мои группы')]
                 ]
                 reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
