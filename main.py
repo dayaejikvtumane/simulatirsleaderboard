@@ -3,10 +3,11 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from config import BOT_TOKEN, ADMIN_ID
 from data.db_session import global_init, create_session
 from admin import admin_menu, button_click, handle_admin_message
-from telegram import ReplyKeyboardRemove
-from student import register_student_handlers
-from mentors import register_mentor_handlers, MENTOR_NAME, MENTOR_SURNAME, MENTOR_GROUP, MENTOR_CONFIRMATION
-from data.users import Mentor
+from telegram import ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
+from student import register_student_handlers, NAME
+from mentors import register_mentor_handlers, MENTOR_NAME, MENTOR_SURNAME, MENTOR_GROUP, MENTOR_CONFIRMATION, \
+    mentor_start
+from data.users import Mentor, Student
 import mentors
 
 # Настройка логирования
@@ -25,20 +26,37 @@ async def start(update, context):
     telegram_id = update.effective_user.id
     session = create_session()
     if telegram_id == ADMIN_ID:
-        mentor = session.query(Mentor).filter(Mentor.telegram_id == telegram_id).first()
-        if mentor:
+        admin_check = session.query(Mentor).filter(Mentor.telegram_id == telegram_id).first()
+        if admin_check:
+            from admin import admin_menu
             await admin_menu(update, context)
         else:
             await update.message.reply_text(
-                'Давайте зарегистрируем вас как наставника.\n'
+                'Вы идентифицированы как администратор. Давайте зарегистрируем вас как наставника.\n'
                 'Введите ваше имя:',
                 reply_markup=ReplyKeyboardRemove()
             )
             return MENTOR_NAME
     else:
-        from student import student_start
-        await student_start(update, context)
-
+        student = session.query(Student).filter(Student.telegram_id == telegram_id).first()
+        if student:
+            keyboard = [
+                [KeyboardButton('Добавить результат полёта')],
+                [KeyboardButton('Рейтинг')]
+            ]
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            await update.message.reply_text(
+                f'Добро пожаловать, {student.name}!\n'
+                'Выберите действие:',
+                reply_markup=reply_markup
+            )
+        else:
+            await update.message.reply_text(
+                'Привет! Тебя нет в моей базе, давай регистрироваться.\n'
+                'Как тебя зовут?',
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            return NAME
     session.close()
 
 
@@ -53,23 +71,11 @@ def register_admin_handlers(application):
 
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
-    register_admin_handlers(application)
     register_student_handlers(application)
     register_mentor_handlers(application)
-    application.add_handler(ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            MENTOR_NAME: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND & filters.User(ADMIN_ID), mentors.get_name_ment)],
-            MENTOR_SURNAME: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND & filters.User(ADMIN_ID), mentors.get_surname_ment)],
-            MENTOR_GROUP: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND & filters.User(ADMIN_ID), mentors.get_group_ment)],
-            MENTOR_CONFIRMATION: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND & filters.User(ADMIN_ID), mentors.confirm_data_ment)],
-        },
-        fallbacks=[CommandHandler("cancel", mentors.cancel)],
-    ))
+    register_admin_handlers(application)
+    application.add_handler(CommandHandler("start", start))
+
     application.run_polling()
 
 

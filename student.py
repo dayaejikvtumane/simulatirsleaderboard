@@ -1,16 +1,24 @@
 from config import ADMIN_ID
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes
 from data.db_session import create_session
-from data.users import Student, FlightResult
+from data.users import FlightResult
 from datetime import datetime
+from admin import admin_menu
 import logging
 from telegram import ReplyKeyboardRemove, ReplyKeyboardMarkup, KeyboardButton
 from io import BytesIO
+from config import ADMIN_ID
+from data.users import Mentor, Student
 
 NAME, SURNAME, GROUP, BIRTH_DATE, CONFIRM, FLIGHT_SIMULATOR, FLIGHT_MODE, FLIGHT_MAP, FLIGHT_TIME, FLIGHT_PHOTO = range(10)
 
 async def student_start(update, context):
     telegram_id = update.effective_user.id
+    session = create_session()
+    if telegram_id == ADMIN_ID:
+        admin_check = session.query(Mentor).filter(Mentor.telegram_id == telegram_id).first()
+        if admin_check:
+            await admin_menu(update, context)
     session = create_session()
     existing_student = session.query(Student).filter(Student.telegram_id == telegram_id).first()
     session.close()
