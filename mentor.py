@@ -264,6 +264,10 @@ async def process_check_student(update, context):
     finally:
         session.close()
 
+
+SHOW_GROUP_RATING = 19
+
+
 @async_handler
 async def show_mentor_groups(update, context):
     session = create_session()
@@ -271,13 +275,79 @@ async def show_mentor_groups(update, context):
         mentor = session.query(Mentor).filter(Mentor.telegram_id == update.effective_user.id).first()
         if not mentor:
             await update.message.reply_text('Вы не зарегистрированы как наставник.')
-            return
+            return ConversationHandler.END
+
+        groups = [g.strip() for g in mentor.group.split(',') if g.strip()]
+
+        if not groups:
+            await update.message.reply_text('У вас нет назначенных групп.')
+            return await show_mentor_menu(update, context, show_welcome=False)
+
+        keyboard = [[KeyboardButton(group)] for group in groups]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
         await update.message.reply_text(
-            f"Группы, которые вы ведёте:\n{mentor.group}",
-            reply_markup=ReplyKeyboardRemove()
+            'Выберите группу для просмотра рейтинга:',
+            reply_markup=reply_markup
         )
-        return await show_mentor_menu(update, context, mentor, show_welcome=False)
+        return SHOW_GROUP_RATING
+    finally:
+        session.close()
+
+
+@async_handler
+async def show_group_rating(update, context):
+    selected_group = update.message.text
+    session = create_session()
+    try:
+        # Получаем всех студентов группы
+        students = session.query(Student).filter(Student.group == selected_group).all()
+
+        if not students:
+            await update.message.reply_text(f'В группе {selected_group} нет студентов.')
+            return await show_mentor_menu(update, context, show_welcome=False)
+
+        # Получаем все результаты для студентов этой группы
+        results = session.query(FlightResult, Student).join(Student).filter(
+            Student.group == selected_group
+        ).order_by(
+            FlightResult.simulator,
+            FlightResult.map_name,
+            FlightResult.flight_mode,
+            FlightResult.time.asc()
+        ).all()
+
+        if not results:
+            await update.message.reply_text(f'В группе {selected_group} пока нет результатов.')
+            return await show_mentor_menu(update, context, show_welcome=False)
+
+        # Формируем структуру для хранения результатов по категориям
+        rating_data = {}
+        for result, student in results:
+            key = (result.simulator, result.map_name, result.flight_mode)
+            if key not in rating_data:
+                rating_data[key] = []
+            rating_data[key].append((result.time, student))
+
+        # Формируем сообщение с рейтингом
+        response = [f"Рейтинг группы {selected_group}:"]
+
+        for (simulator, map_name, flight_mode), results in rating_data.items():
+            response.append(f"\n{simulator}, {map_name}, {flight_mode}:")
+            for idx, (time, student) in enumerate(results, 1):
+                response.append(f"{idx}. {time:.3f} сек - {student.surname} {student.name}")
+
+        # Разбиваем сообщение на части, если оно слишком длинное
+        message = "\n".join(response)
+        max_length = 4000  # Максимальная длина сообщения в Telegram
+        if len(message) > max_length:
+            parts = [message[i:i + max_length] for i in range(0, len(message), max_length)]
+            for part in parts:
+                await update.message.reply_text(part)
+        else:
+            await update.message.reply_text(message)
+
+        return await show_mentor_menu(update, context, show_welcome=False)
     finally:
         session.close()
 
@@ -293,6 +363,16 @@ def register_mentor_handlers(application: Application, admin_id):
         fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
     )
 
+    # Обработчик просмотра рейтинга групп
+    group_rating_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex(r'^Мои группы$') & ~filters.COMMAND,
+                                     show_mentor_groups)],
+        states={
+            SHOW_GROUP_RATING: [MessageHandler(filters.TEXT & ~filters.COMMAND, show_group_rating)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
+    )
+
     # Обработчик добавления наставников
     add_mentor_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex(r'^Добавить наставника$') & ~filters.COMMAND,
@@ -303,11 +383,6 @@ def register_mentor_handlers(application: Application, admin_id):
         fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
     )
 
-    groups_handler = MessageHandler(
-        filters.Regex(r'^Мои группы$') & ~filters.COMMAND,
-        show_mentor_groups
-    )
-
     application.add_handler(check_results_handler)
-    application.add_handler(groups_handler)
+    application.add_handler(group_rating_handler)
     application.add_handler(add_mentor_handler)
