@@ -301,21 +301,6 @@ async def cancel(update, context):
 
 
 def register_student_handlers(application):
-    registration_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler('start', student_start),
-            MessageHandler(filters.Regex(r'^Начать регистрацию заново$') & ~filters.COMMAND, student_start)
-        ],
-        states={
-            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_name)],
-            SURNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_surname)],
-            GROUP: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_group)],
-            BIRTH_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_birth_date)],
-            CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_registration)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel)],
-    )
-
     flight_result_handler = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex(r'^Добавить результат полёта$') & ~filters.COMMAND, add_flight_result)],
@@ -337,6 +322,5 @@ def register_student_handlers(application):
         view_my_results
     )
 
-    application.add_handler(registration_handler)
     application.add_handler(flight_result_handler)
     application.add_handler(view_results_handler)

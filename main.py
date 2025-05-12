@@ -6,6 +6,7 @@ from telegram import ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
 from data.users import Student, Mentor
 from mentor import MENTOR_NAME, MENTOR_SURNAME, MENTOR_GROUP, register_mentor_name, register_mentor_surname, \
     register_mentor_group, cancel_mentor_registration, register_mentor_handlers
+from student import NAME, SURNAME, GROUP, BIRTH_DATE, CONFIRM
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -70,10 +71,14 @@ async def start(update, context):
                 session.close()
                 return MENTOR_NAME
         else:
-            from student import student_start
+            from student import register_name
+            await update.message.reply_text(
+                'Привет! Тебя нет в моей базе, давай регистрироваться.\n'
+                'Как тебя зовут?',
+                reply_markup=ReplyKeyboardRemove(),
+            )
             session.close()
-            return await student_start(update, context)
-
+            return NAME
     except Exception as e:
         logger.error(f"Ошибка в обработчике start: {str(e)}")
         await update.message.reply_text(
@@ -87,9 +92,16 @@ async def start(update, context):
 
 
 def register_handlers(application: Application):
+    from student import register_name, register_surname, register_group, register_birth_date, confirm_registration
+
     start_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
+            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_name)],
+            SURNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_surname)],
+            GROUP: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_group)],
+            BIRTH_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_birth_date)],
+            CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_registration)],
             MENTOR_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_mentor_name)],
             MENTOR_SURNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_mentor_surname)],
             MENTOR_GROUP: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_mentor_group)],
