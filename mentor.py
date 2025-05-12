@@ -2,6 +2,7 @@ import csv
 import os
 import tempfile
 from datetime import datetime
+from io import BytesIO
 
 from telegram import ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import MessageHandler, filters, ConversationHandler, CommandHandler, Application
@@ -187,16 +188,28 @@ async def process_check_student(update, context):
             await update.message.reply_text('У этого студента пока нет результатов.')
             return await show_mentor_menu(update, context, show_welcome=False)
 
-        response = [
+        has_photos = False
+        Sp_res = [
             f"Результаты студента {student.surname} {student.name} (группа {student.group}):",
             ""
         ]
 
-        for result in results:
-            response.append(
-                f"{result.simulator}, {result.map_name}, {result.flight_mode} - {result.time:.3f} сек "
-                f"({result.date_added.strftime('%d.%m.%Y')})"
-            )
+        for i in results:
+            if i.photo_data:  # если есть фотка, то отправляем фото с подписью рещультатов
+                await update.message.reply_photo(
+                    photo=BytesIO(i.photo_data),
+                    caption=f"{i.simulator}, {i.map_name}, {i.flight_mode} - {i.time:.3f} сек "
+                            f"({i.date_added.strftime('%d.%m.%Y')})"
+                )
+                has_photos = True
+            else:
+                Sp_res.append(
+                    f"{i.simulator}, {i.map_name}, {i.flight_mode} - {i.time:.3f} сек "
+                    f"({i.date_added.strftime('%d.%m.%Y')})"
+                )
+
+        if not has_photos or len(Sp_res) > 2:  # тут отпраыляем только то что без фоток
+            await update.message.reply_text("\n".join(Sp_res))
 
         context.user_data['selected_student_id'] = student.id
 
@@ -205,12 +218,14 @@ async def process_check_student(update, context):
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-        await update.message.reply_text("\n".join(response))
         await update.message.reply_text(
             "Выберите действие:",
             reply_markup=reply_markup
         )
         return EDIT_OPTIONS
+    except Exception as e:
+        await update.message.reply_text(f'Произошла ошибка: {str(e)}')
+        return await show_mentor_menu(update, context, show_welcome=False)
     finally:
         session.close()
 
@@ -234,6 +249,7 @@ async def handle_edit_choice(update, context):
             with tempfile.NamedTemporaryFile(mode='w+', suffix='.csv', delete=False, encoding='utf-8') as f:
                 writer = csv.writer(f)
                 writer.writerow(['ID', 'Simulator', 'Map', 'Mode', 'Time', 'Date (YYYY-MM-DD)'])
+                # создание CSV
                 for i in results:
                     writer.writerow([
                         i.id,
@@ -364,7 +380,6 @@ def register_mentor_handlers(application: Application, admin_id):
         fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
     )
 
-    # Остальные обработчики
     add_mentor_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex(r'^Добавить наставника$') & ~filters.COMMAND,
                                      add_mentor_start)],
