@@ -1,11 +1,37 @@
 from telegram import ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import MessageHandler, filters, ConversationHandler, CommandHandler
 from data.db_session import create_session
-from data.users import FlightResult, Student
+from data.users import FlightResult, Student, Mentor
 from datetime import datetime
 from asynchronous import async_handler
+from config import ADMIN_ID
 
 RATING_SIMULATOR, RATING_MODE, RATING_MAP = range(10, 13)
+
+
+def is_mentor(telegram_id, admin_id):
+    try:
+        with open("admin.txt", "r") as f:
+            admin_ids = [line.strip() for line in f.readlines() if line.strip()]
+            return str(telegram_id) in admin_ids or telegram_id == admin_id
+    except FileNotFoundError:
+        return telegram_id == admin_id
+
+
+async def get_keyboard(telegram_id):
+    if is_mentor(telegram_id, ADMIN_ID):
+        return [
+            [KeyboardButton('Проверить результаты учеников')],
+            [KeyboardButton('Рейтинг')],
+            [KeyboardButton('Добавить наставника')],
+            [KeyboardButton('Мои группы')]
+        ]
+    else:
+        return [
+            [KeyboardButton('Добавить результат полёта')],
+            [KeyboardButton('Рейтинг')],
+            [KeyboardButton('Все мои результаты')]
+        ]
 
 
 @async_handler
@@ -67,11 +93,7 @@ async def rating_map(update, context):
         ).order_by(FlightResult.time.asc()).first() if current_student else None
 
         if not results and not user_best_result:
-            keyboard = [
-                [KeyboardButton('Добавить результат полёта')],
-                [KeyboardButton('Рейтинг')],
-                [KeyboardButton('Все мои результаты')]
-            ]
+            keyboard = await get_keyboard(update.effective_user.id)
             reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
             await update.message.reply_text(
@@ -108,11 +130,8 @@ async def rating_map(update, context):
                     f"Ваш лучший результат: {user_position}. {user_best_result.time:.3f} - {current_student.surname} {current_student.name}, гр. {current_student.group}")
 
         await update.message.reply_text("\n".join(response))
-        keyboard = [
-            [KeyboardButton('Добавить результат полёта')],
-            [KeyboardButton('Рейтинг')],
-            [KeyboardButton('Все мои результаты')]
-        ]
+
+        keyboard = await get_keyboard(update.effective_user.id)
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text('Выберите действие:', reply_markup=reply_markup)
 
@@ -122,6 +141,7 @@ async def rating_map(update, context):
         session.close()
 
     return ConversationHandler.END
+
 
 @async_handler
 async def quick_rating_action(update, context):

@@ -5,8 +5,10 @@ from datetime import datetime
 from telegram import ReplyKeyboardRemove, ReplyKeyboardMarkup, KeyboardButton
 from io import BytesIO
 from asynchronous import async_handler
+
 NAME, SURNAME, GROUP, BIRTH_DATE, CONFIRM = range(5)
 FLIGHT_SIMULATOR, FLIGHT_MODE, FLIGHT_MAP, FLIGHT_TIME, FLIGHT_PHOTO = range(5, 10)
+
 
 @async_handler
 async def student_start(update, context):
@@ -40,6 +42,7 @@ async def student_start(update, context):
     )
     return NAME
 
+
 @async_handler
 async def register_name(update, context):
     name = update.message.text.strip()
@@ -49,6 +52,7 @@ async def register_name(update, context):
     context.user_data["name"] = name
     await update.message.reply_text('Теперь введите свою фамилию:')
     return SURNAME
+
 
 @async_handler
 async def register_surname(update, context):
@@ -60,6 +64,7 @@ async def register_surname(update, context):
     await update.message.reply_text('Введите свою группу:')
     return GROUP
 
+
 @async_handler
 async def register_group(update, context):
     group = update.message.text.strip()
@@ -69,6 +74,7 @@ async def register_group(update, context):
     context.user_data["group"] = group
     await update.message.reply_text('Введите свою дату рождения в формате ДД.ММ.ГГГГ (например, 01.01.2000):')
     return BIRTH_DATE
+
 
 @async_handler
 async def register_birth_date(update, context):
@@ -98,13 +104,13 @@ async def register_birth_date(update, context):
     )
     return CONFIRM
 
+
 @async_handler
 async def confirm_registration(update, context):
     answer = update.message.text.lower()
-    if answer not in ['да', 'нет']:
+    if answer not in ['да', 'нет', 'начать регистрацию заново']:
         await update.message.reply_text('Пожалуйста, используйте кнопки для ответа')
         return CONFIRM
-
     if answer == 'нет':
         keyboard = [
             [KeyboardButton('Начать регистрацию заново')]
@@ -118,10 +124,32 @@ async def confirm_registration(update, context):
     try:
         existing_mentor = session.query(Mentor).filter(Mentor.telegram_id == update.effective_user.id).first()
         if existing_mentor:
+            if answer == 'начать регистрацию заново':
+                context.user_data.clear()
+                await update.message.reply_text(
+                    'Регистрация начата заново.\nКак тебя зовут?',
+                    reply_markup=ReplyKeyboardRemove()
+                )
+                return NAME
+            else:
+                keyboard = [
+                    [KeyboardButton('Начать регистрацию заново')]
+                ]
+                reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                await update.message.reply_text(
+                    'Вы уже зарегистрированы как наставник. Хотите начать регистрацию заново?',
+                    reply_markup=reply_markup
+                )
+                session.close()
+                return CONFIRM
+
+        if answer == 'начать регистрацию заново':
+            context.user_data.clear()
             await update.message.reply_text(
-                'Вы уже зарегистрированы как наставник. Сначала удалите себя из наставников.',
-                reply_markup=ReplyKeyboardRemove())
-            return ConversationHandler.END
+                'Регистрация начата заново.\nКак тебя зовут?',
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return NAME
 
         student = Student(
             name=context.user_data["name"],
@@ -147,6 +175,7 @@ async def confirm_registration(update, context):
     context.user_data.clear()
     return ConversationHandler.END
 
+
 @async_handler
 async def add_flight_result(update, context):
     keyboard = [
@@ -157,6 +186,7 @@ async def add_flight_result(update, context):
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text('Выберите симулятор:', reply_markup=reply_markup)
     return FLIGHT_SIMULATOR
+
 
 @async_handler
 async def process_simulator(update, context):
@@ -169,6 +199,7 @@ async def process_simulator(update, context):
     await update.message.reply_text('Выберите режим полета:', reply_markup=reply_markup)
     return FLIGHT_MODE
 
+
 @async_handler
 async def process_flight_mode(update, context):
     context.user_data['flight_mode'] = update.message.text
@@ -180,12 +211,14 @@ async def process_flight_mode(update, context):
     await update.message.reply_text("Выберите карту:", reply_markup=reply_markup)
     return FLIGHT_MAP
 
+
 @async_handler
 async def process_map(update, context):
     context.user_data['map_name'] = update.message.text
     await update.message.reply_text('Введите время прохождения в секундах (например: 12.523):',
                                     reply_markup=ReplyKeyboardRemove())
     return FLIGHT_TIME
+
 
 @async_handler
 async def process_time(update, context):
@@ -200,6 +233,7 @@ async def process_time(update, context):
         await update.message.reply_text(f'Некорректное время. Пожалуйста, введите число (например: 10.53)\nОшибка: {e}')
         return FLIGHT_TIME
 
+
 @async_handler
 async def process_photo(update, context):
     if update.message.photo:
@@ -209,10 +243,12 @@ async def process_photo(update, context):
         context.user_data['photo_data'] = photo_data.getvalue()
     return await save_flight_result(update, context)
 
+
 @async_handler
 async def skip_photo(update, context):
     context.user_data['photo_data'] = None
     return await save_flight_result(update, context)
+
 
 @async_handler
 async def save_flight_result(update, context):
@@ -248,6 +284,7 @@ async def save_flight_result(update, context):
     session.close()
     context.user_data.clear()
     return ConversationHandler.END
+
 
 @async_handler
 async def view_my_results(update, context):
@@ -286,6 +323,7 @@ async def view_my_results(update, context):
         await update.message.reply_text('Произошла ошибка при получении результатов. Попробуйте позже.')
     finally:
         session.close()
+
 
 @async_handler
 async def cancel(update, context):
