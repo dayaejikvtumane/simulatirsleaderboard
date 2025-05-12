@@ -1,69 +1,53 @@
+import csv
+import os
+import tempfile
+from datetime import datetime
+
 from telegram import ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import MessageHandler, filters, ConversationHandler, CommandHandler, Application
+
+from config import ADMIN_ID
 from data.db_session import create_session
 from data.users import Mentor, Student, FlightResult
-from config import ADMIN_ID
 
+# Состояния
 MENTOR_NAME, MENTOR_SURNAME, MENTOR_GROUP = range(13, 16)
-CHECK_GROUP, CHECK_STUDENT = range(16, 18)
-
-ADD_MENTOR = 18
-
-
-async def add_mentor_start(update, context):
-    if not is_mentor(update.effective_user.id, ADMIN_ID):
-        await update.message.reply_text('Эта команда доступна только администраторам.')
-        return ConversationHandler.END
-
-    await update.message.reply_text(
-        'Введите Telegram ID нового наставника:',
-        reply_markup=ReplyKeyboardRemove()
-    )
-    return ADD_MENTOR
+CHECK_GROUP, CHECK_STUDENT, EDIT_OPTIONS, UPLOAD_CSV = range(16, 20)
+ADD_MENTOR = 20
 
 
-async def add_mentor_id(update, context):
-    try:
-        new_mentor_id = int(update.message.text.strip())
-        if new_mentor_id <= 0:
-            raise ValueError("ID должен быть положительным числом")
-        with open("admin.txt", "a+") as f:
-            f.seek(0)
-            existing_ids = [line.strip() for line in f.readlines() if line.strip()]
+async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
+    if not mentor:
+        session = create_session()
+        mentor = session.query(Mentor).filter(Mentor.telegram_id == update.effective_user.id).first()
+        session.close()
+        if not mentor:
+            await update.message.reply_text('Вы не зарегистрированы как наставник.')
+            return ConversationHandler.END
 
-            if str(new_mentor_id) in existing_ids:
-                await update.message.reply_text('Этот наставник уже есть в списке.')
-                return await show_mentor_menu(update, context, show_welcome=False)
+    keyboard = [
+        [KeyboardButton('Проверить результаты учеников')],
+        [KeyboardButton('Рейтинг')],
+        [KeyboardButton('Мои группы')]
+    ]
 
-            f.write(f"\n{new_mentor_id}")
+    if is_mentor(update.effective_user.id, ADMIN_ID):
+        keyboard.append([KeyboardButton('Добавить наставника')])
 
-        keyboard = [
-            [KeyboardButton('Проверить результаты учеников')],
-            [KeyboardButton('Рейтинг')],
-            [KeyboardButton('Мои группы')],
-            [KeyboardButton('Добавить наставника')]
-        ]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
+    if show_welcome:
         await update.message.reply_text(
-            f"Наставник с ID {new_mentor_id} успешно добавлен!",
+            f'Добро пожаловать, {mentor.name} {mentor.surname}!\n'
+            'Выберите действие:',
             reply_markup=reply_markup
         )
-
-    except ValueError as e:
-        await update.message.reply_text(f"Некорректный ID: {e}\nПопробуйте еще раз.")
-        return ADD_MENTOR
-
+    else:
+        await update.message.reply_text(
+            'Выберите действие:',
+            reply_markup=reply_markup
+        )
     return ConversationHandler.END
-
-
-def is_mentor(telegram_id, admin_id):
-    try:
-        with open("admin.txt", "r") as f:
-            admin_ids = [line.strip() for line in f.readlines() if line.strip()]
-            return str(telegram_id) in admin_ids or telegram_id == admin_id
-    except FileNotFoundError:
-        return telegram_id == admin_id
 
 
 async def register_mentor_name(update, context):
@@ -129,49 +113,6 @@ async def register_mentor_group(update, context):
         return ConversationHandler.END
     finally:
         session.close()
-
-
-async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
-    if not mentor:
-        session = create_session()
-        mentor = session.query(Mentor).filter(Mentor.telegram_id == update.effective_user.id).first()
-        session.close()
-        if not mentor:
-            await update.message.reply_text('Вы не зарегистрированы как наставник.')
-            return ConversationHandler.END
-
-    keyboard = [
-        [KeyboardButton('Проверить результаты учеников')],
-        [KeyboardButton('Рейтинг')],
-        [KeyboardButton('Мои группы')]
-    ]
-
-    # Добавляем кнопку для администраторов
-    if is_mentor(update.effective_user.id, ADMIN_ID):
-        keyboard.append([KeyboardButton('Добавить наставника')])
-
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-    if show_welcome:
-        await update.message.reply_text(
-            f'Добро пожаловать, {mentor.name} {mentor.surname}!\n'
-            'Выберите действие:',
-            reply_markup=reply_markup
-        )
-    else:
-        await update.message.reply_text(
-            'Выберите действие:',
-            reply_markup=reply_markup
-        )
-    return ConversationHandler.END
-
-async def cancel_mentor_registration(update, context):
-    await update.message.reply_text(
-        'Регистрация наставника отменена.',
-        reply_markup=ReplyKeyboardRemove()
-    )
-    context.user_data.clear()
-    return ConversationHandler.END
 
 
 async def check_student_results(update, context):
@@ -257,10 +198,190 @@ async def process_check_student(update, context):
                 f"({result.date_added.strftime('%d.%m.%Y')})"
             )
 
+        context.user_data['selected_student_id'] = student.id
+
+        keyboard = [
+            [KeyboardButton('В меню'), KeyboardButton('Редактировать')]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
         await update.message.reply_text("\n".join(response))
-        return await show_mentor_menu(update, context, show_welcome=False)
+        await update.message.reply_text(
+            "Выберите действие:",
+            reply_markup=reply_markup
+        )
+        return EDIT_OPTIONS
     finally:
         session.close()
+
+
+async def handle_edit_choice(update, context):
+    choice = update.message.text
+    if choice == 'В меню':
+        return await show_mentor_menu(update, context, show_welcome=False)
+    elif choice == 'Редактировать':
+        session = create_session()
+        try:
+            student_id = context.user_data.get('selected_student_id')
+            if not student_id:
+                await update.message.reply_text('Ошибка: студент не выбран.')
+                return ConversationHandler.END
+
+            results = session.query(FlightResult).filter(
+                FlightResult.student_id == student_id
+            ).all()
+
+            with tempfile.NamedTemporaryFile(mode='w+', suffix='.csv', delete=False, encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(['ID', 'Simulator', 'Map', 'Mode', 'Time', 'Date (YYYY-MM-DD)'])
+                for i in results:
+                    writer.writerow([
+                        i.id,
+                        i.simulator,
+                        i.map_name,
+                        i.flight_mode,
+                        i.time,
+                        i.date_added.strftime('%Y-%m-%d')
+                    ])
+                temp_file_path = f.name
+
+            with open(temp_file_path, 'rb') as f:
+                await update.message.reply_document(
+                    document=f,
+                    filename='results.csv',
+                    caption='Отредактируйте CSV файл и загрузите его обратно. '
+                            'Для новых записей оставьте ID пустым.'
+                )
+            os.remove(temp_file_path)
+
+            return UPLOAD_CSV
+        except Exception as e:
+            await update.message.reply_text(f'Ошибка при создании файла: {str(e)}')
+            return await show_mentor_menu(update, context, show_welcome=False)
+        finally:
+            session.close()
+    else:
+        await update.message.reply_text('Неизвестная команда')
+        return EDIT_OPTIONS
+
+
+async def handle_csv_upload(update, context):
+    file = await update.message.document.get_file()
+    csv_file = await file.download_to_drive()
+
+    session = create_session()
+    try:
+        student_id = context.user_data.get('selected_student_id')
+        if not student_id:
+            await update.message.reply_text('Ошибка: студент не выбран')
+            return await show_mentor_menu(update, context, show_welcome=False)
+        # запись полученного в бд
+        with open(csv_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            errors = []
+            updates = 0
+            creates = 0
+
+            for i in reader:  # проходимся по строчкам CSV
+                try:
+                    if i['ID']:  # Если есть айди - не новая строчка, а просто меняется старая
+                        result = session.query(FlightResult).filter(  #
+                            FlightResult.id == int(i['ID']),
+                            FlightResult.student_id == student_id
+                        ).first()
+                        if not result:
+                            errors.append(f"Запись с ID {i['ID']} не найдена")
+                            continue
+
+                        # Запись
+                        result.simulator = i['Simulator']
+                        result.map_name = i['Map']
+                        result.flight_mode = i['Mode']
+                        result.time = float(i['Time'])
+                        result.date_added = datetime.strptime(i['Date (YYYY-MM-DD)'], '%Y-%m-%d').date()
+                        updates += 1
+                    else:  # Если новая запись
+                        new_result = FlightResult(
+                            student_id=student_id,
+                            simulator=i['Simulator'],
+                            map_name=i['Map'],
+                            flight_mode=i['Mode'],
+                            time=float(i['Time']),
+                            date_added=datetime.strptime(i['Date (YYYY-MM-DD)'], '%Y-%m-%d').date()
+                        )
+                        session.add(new_result)
+                        creates += 1
+
+                except Exception as e:
+                    errors.append(f"Ошибка в строке {reader.line_num}: {str(e)}")
+
+            session.commit()
+
+            message = f"Обновлено записей: {updates}\nДобавлено новых записей: {creates}"
+            if errors:
+                message += "\nОшибки:\n" + "\n".join(errors)
+
+            await update.message.reply_text(message)
+
+    except Exception as e:
+        session.rollback()
+        await update.message.reply_text(f'Ошибка обработки файла: {str(e)}')
+    finally:
+        session.close()
+        os.remove(csv_file)
+
+    return await show_mentor_menu(update, context, show_welcome=False)
+
+
+async def cancel_mentor_registration(update, context):
+    await update.message.reply_text(
+        'Операция отменена.',
+        reply_markup=ReplyKeyboardRemove()
+    )
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
+def is_mentor(telegram_id, admin_id):
+    try:
+        with open("admin.txt", "r") as f:
+            admin_ids = [line.strip() for line in f.readlines() if line.strip()]
+            return str(telegram_id) in admin_ids or telegram_id == admin_id
+    except FileNotFoundError:
+        return telegram_id == admin_id
+
+
+def register_mentor_handlers(application: Application, admin_id):
+    check_results_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex(r'^Проверить результаты учеников$') & ~filters.COMMAND,
+                                     check_student_results)],
+        states={
+            CHECK_GROUP: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_check_group)],
+            CHECK_STUDENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_check_student)],
+            EDIT_OPTIONS: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_edit_choice)],
+            UPLOAD_CSV: [MessageHandler(filters.Document.FileExtension("csv"), handle_csv_upload)]
+        },
+        fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
+    )
+
+    # Остальные обработчики
+    add_mentor_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex(r'^Добавить наставника$') & ~filters.COMMAND,
+                                     add_mentor_start)],
+        states={
+            ADD_MENTOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_mentor_id)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
+    )
+
+    groups_handler = MessageHandler(
+        filters.Regex(r'^Мои группы$') & ~filters.COMMAND,
+        show_mentor_groups
+    )
+
+    application.add_handler(check_results_handler)
+    application.add_handler(groups_handler)
+    application.add_handler(add_mentor_handler)
 
 
 async def show_mentor_groups(update, context):
@@ -280,33 +401,46 @@ async def show_mentor_groups(update, context):
         session.close()
 
 
-def register_mentor_handlers(application: Application, admin_id):
-    # Обработчик проверки результатов студентов
-    check_results_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(r'^Проверить результаты учеников$') & ~filters.COMMAND,
-                                     check_student_results)],
-        states={
-            CHECK_GROUP: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_check_group)],
-            CHECK_STUDENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_check_student)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
-    )
+async def add_mentor_start(update, context):
+    if not is_mentor(update.effective_user.id, ADMIN_ID):
+        await update.message.reply_text('Эта команда доступна только администраторам.')
+        return ConversationHandler.END
 
-    # Обработчик добавления наставников
-    add_mentor_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(r'^Добавить наставника$') & ~filters.COMMAND,
-                                     add_mentor_start)],
-        states={
-            ADD_MENTOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_mentor_id)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
+    await update.message.reply_text(
+        'Введите Telegram ID нового наставника:',
+        reply_markup=ReplyKeyboardRemove()
     )
+    return ADD_MENTOR
 
-    groups_handler = MessageHandler(
-        filters.Regex(r'^Мои группы$') & ~filters.COMMAND,
-        show_mentor_groups
-    )
 
-    application.add_handler(check_results_handler)
-    application.add_handler(groups_handler)
-    application.add_handler(add_mentor_handler)
+async def add_mentor_id(update, context):
+    try:
+        new_mentor_id = int(update.message.text.strip())
+        if new_mentor_id <= 0:
+            raise ValueError("ID должен быть положительным числом")
+        with open("admin.txt", "a+") as f:
+            f.seek(0)
+            existing_ids = [line.strip() for line in f.readlines() if line.strip()]
+
+            if str(new_mentor_id) in existing_ids:
+                await update.message.reply_text('Этот наставник уже есть в списке.')
+                return await show_mentor_menu(update, context, show_welcome=False)
+
+            f.write(f"\n{new_mentor_id}")
+
+        await update.message.reply_text(
+            f"Наставник с ID {new_mentor_id} успешно добавлен!",
+            reply_markup=ReplyKeyboardMarkup(
+                [[KeyboardButton('Проверить результаты учеников')],
+                 [KeyboardButton('Рейтинг')],
+                 [KeyboardButton('Мои группы')],
+                 [KeyboardButton('Добавить наставника')]],
+                resize_keyboard=True
+            )
+        )
+
+    except ValueError as e:
+        await update.message.reply_text(f"Некорректный ID: {e}\nПопробуйте еще раз.")
+        return ADD_MENTOR
+
+    return ConversationHandler.END
