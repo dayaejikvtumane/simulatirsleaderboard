@@ -7,6 +7,7 @@ from asynchronous import async_handler
 
 RATING_SIMULATOR, RATING_MODE, RATING_MAP = range(10, 13)
 
+
 @async_handler
 async def start_rating(update, context):
     keyboard = [
@@ -17,6 +18,7 @@ async def start_rating(update, context):
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text('Рейтинг\nВыберите симулятор:', reply_markup=reply_markup)
     return RATING_SIMULATOR
+
 
 @async_handler
 async def rating_simulator(update, context):
@@ -29,6 +31,7 @@ async def rating_simulator(update, context):
     await update.message.reply_text('Выберите режим полёта:', reply_markup=reply_markup)
     return RATING_MODE
 
+
 @async_handler
 async def rating_mode(update, context):
     context.user_data['rating_mode'] = update.message.text
@@ -39,6 +42,7 @@ async def rating_mode(update, context):
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text('Выберите название трассы:', reply_markup=reply_markup)
     return RATING_MAP
+
 
 @async_handler
 async def rating_map(update, context):
@@ -63,7 +67,17 @@ async def rating_map(update, context):
         ).order_by(FlightResult.time.asc()).first() if current_student else None
 
         if not results and not user_best_result:
-            await update.message.reply_text('Нет результатов для выбранных параметров.')
+            keyboard = [
+                [KeyboardButton('Добавить результат полёта')],
+                [KeyboardButton('Рейтинг')],
+                [KeyboardButton('Все мои результаты')]
+            ]
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+            await update.message.reply_text(
+                'Нет результатов для выбранных параметров.',
+                reply_markup=reply_markup
+            )
             return ConversationHandler.END
 
         current_date = datetime.now().strftime('%H:%M %d.%m.%Y г.')
@@ -94,12 +108,37 @@ async def rating_map(update, context):
                     f"Ваш лучший результат: {user_position}. {user_best_result.time:.3f} - {current_student.surname} {current_student.name}, гр. {current_student.group}")
 
         await update.message.reply_text("\n".join(response))
+        keyboard = [
+            [KeyboardButton('Добавить результат полёта')],
+            [KeyboardButton('Рейтинг')],
+            [KeyboardButton('Все мои результаты')]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text('Выберите действие:', reply_markup=reply_markup)
+
     except Exception as e:
         await update.message.reply_text('Произошла ошибка при получении рейтинга. Попробуйте позже.')
     finally:
         session.close()
 
     return ConversationHandler.END
+
+@async_handler
+async def quick_rating_action(update, context):
+    text = update.message.text
+    if text.startswith("Рейтинг "):
+        parts = text.split()
+        if len(parts) == 4:
+            simulator = parts[1]
+            mode = parts[2]
+            map_name = parts[3]
+
+            context.user_data['rating_simulator'] = simulator
+            context.user_data['rating_mode'] = mode
+            context.user_data['rating_map'] = map_name
+            return await rating_map(update, context)
+    return await start_rating(update, context)
+
 
 @async_handler
 async def cancel_rating(update, context):
@@ -120,4 +159,10 @@ def register_rating_handlers(application):
         },
         fallbacks=[CommandHandler("cancel", cancel_rating)],
     )
+    quick_rating_handler = MessageHandler(
+        filters.Regex(r'^Рейтинг .+') & ~filters.COMMAND,
+        quick_rating_action
+    )
+
     application.add_handler(rating_handler)
+    application.add_handler(quick_rating_handler)
