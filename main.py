@@ -7,6 +7,7 @@ from data.users import Student, Mentor
 from mentor import MENTOR_NAME, MENTOR_SURNAME, MENTOR_GROUP, register_mentor_name, register_mentor_surname, \
     register_mentor_group, cancel_mentor_registration, register_mentor_handlers
 from student import NAME, SURNAME, GROUP, BIRTH_DATE, CONFIRM
+from asynchronous import async_handler
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -26,7 +27,7 @@ def is_mentor(telegram_id):
     except FileNotFoundError:
         return telegram_id == ADMIN_ID
 
-
+@async_handler
 async def start(update, context):
     try:
         telegram_id = update.effective_user.id

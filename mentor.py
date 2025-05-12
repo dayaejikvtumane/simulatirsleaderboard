@@ -3,13 +3,14 @@ from telegram.ext import MessageHandler, filters, ConversationHandler, CommandHa
 from data.db_session import create_session
 from data.users import Mentor, Student, FlightResult
 from config import ADMIN_ID
+from asynchronous import async_handler
 
 MENTOR_NAME, MENTOR_SURNAME, MENTOR_GROUP = range(13, 16)
 CHECK_GROUP, CHECK_STUDENT = range(16, 18)
 
 ADD_MENTOR = 18
 
-
+@async_handler
 async def add_mentor_start(update, context):
     if not is_mentor(update.effective_user.id, ADMIN_ID):
         await update.message.reply_text('Эта команда доступна только администраторам.')
@@ -21,7 +22,7 @@ async def add_mentor_start(update, context):
     )
     return ADD_MENTOR
 
-
+@async_handler
 async def add_mentor_id(update, context):
     try:
         new_mentor_id = int(update.message.text.strip())
@@ -65,7 +66,7 @@ def is_mentor(telegram_id, admin_id):
     except FileNotFoundError:
         return telegram_id == admin_id
 
-
+@async_handler
 async def register_mentor_name(update, context):
     name = update.message.text.strip()
     if not name.replace(' ', '').isalpha():
@@ -76,7 +77,7 @@ async def register_mentor_name(update, context):
     await update.message.reply_text('Введите вашу фамилию:')
     return MENTOR_SURNAME
 
-
+@async_handler
 async def register_mentor_surname(update, context):
     surname = update.message.text.strip()
     if not surname.replace(' ', '').isalpha():
@@ -87,7 +88,7 @@ async def register_mentor_surname(update, context):
     await update.message.reply_text('Введите группы, которые вы ведёте (через запятую):')
     return MENTOR_GROUP
 
-
+@async_handler
 async def register_mentor_group(update, context):
     groups = update.message.text.strip()
     if not groups:
@@ -130,7 +131,7 @@ async def register_mentor_group(update, context):
     finally:
         session.close()
 
-
+@async_handler
 async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
     if not mentor:
         session = create_session()
@@ -165,6 +166,7 @@ async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
         )
     return ConversationHandler.END
 
+@async_handler
 async def cancel_mentor_registration(update, context):
     await update.message.reply_text(
         'Регистрация наставника отменена.',
@@ -173,7 +175,7 @@ async def cancel_mentor_registration(update, context):
     context.user_data.clear()
     return ConversationHandler.END
 
-
+@async_handler
 async def check_student_results(update, context):
     session = create_session()
     try:
@@ -195,7 +197,7 @@ async def check_student_results(update, context):
     finally:
         session.close()
 
-
+@async_handler
 async def process_check_group(update, context):
     context.user_data['check_group'] = update.message.text
     session = create_session()
@@ -217,7 +219,7 @@ async def process_check_group(update, context):
     finally:
         session.close()
 
-
+@async_handler
 async def process_check_student(update, context):
     student_name = update.message.text
     session = create_session()
@@ -262,7 +264,7 @@ async def process_check_student(update, context):
     finally:
         session.close()
 
-
+@async_handler
 async def show_mentor_groups(update, context):
     session = create_session()
     try:
@@ -278,7 +280,6 @@ async def show_mentor_groups(update, context):
         return await show_mentor_menu(update, context, mentor, show_welcome=False)
     finally:
         session.close()
-
 
 def register_mentor_handlers(application: Application, admin_id):
     # Обработчик проверки результатов студентов

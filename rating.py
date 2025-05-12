@@ -3,10 +3,11 @@ from telegram.ext import MessageHandler, filters, ConversationHandler, CommandHa
 from data.db_session import create_session
 from data.users import FlightResult, Student
 from datetime import datetime
+from asynchronous import async_handler
 
 RATING_SIMULATOR, RATING_MODE, RATING_MAP = range(10, 13)
 
-
+@async_handler
 async def start_rating(update, context):
     keyboard = [
         [KeyboardButton("FPV Freerider")],
@@ -17,7 +18,7 @@ async def start_rating(update, context):
     await update.message.reply_text('Рейтинг\nВыберите симулятор:', reply_markup=reply_markup)
     return RATING_SIMULATOR
 
-
+@async_handler
 async def rating_simulator(update, context):
     context.user_data['rating_simulator'] = update.message.text
     keyboard = [
@@ -28,7 +29,7 @@ async def rating_simulator(update, context):
     await update.message.reply_text('Выберите режим полёта:', reply_markup=reply_markup)
     return RATING_MODE
 
-
+@async_handler
 async def rating_mode(update, context):
     context.user_data['rating_mode'] = update.message.text
     keyboard = [
@@ -39,7 +40,7 @@ async def rating_mode(update, context):
     await update.message.reply_text('Выберите название трассы:', reply_markup=reply_markup)
     return RATING_MAP
 
-
+@async_handler
 async def rating_map(update, context):
     context.user_data['rating_map'] = update.message.text
     session = create_session()
@@ -100,7 +101,7 @@ async def rating_map(update, context):
 
     return ConversationHandler.END
 
-
+@async_handler
 async def cancel_rating(update, context):
     await update.message.reply_text('Просмотр рейтинга отменен.')
     context.user_data.clear()
