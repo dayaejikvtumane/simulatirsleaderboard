@@ -300,14 +300,10 @@ async def show_group_rating(update, context):
     selected_group = update.message.text
     session = create_session()
     try:
-        # Получаем всех студентов группы
         students = session.query(Student).filter(Student.group == selected_group).all()
-
         if not students:
             await update.message.reply_text(f'В группе {selected_group} нет студентов.')
             return await show_mentor_menu(update, context, show_welcome=False)
-
-        # Получаем все результаты для студентов этой группы
         results = session.query(FlightResult, Student).join(Student).filter(
             Student.group == selected_group
         ).order_by(
@@ -320,16 +316,12 @@ async def show_group_rating(update, context):
         if not results:
             await update.message.reply_text(f'В группе {selected_group} пока нет результатов.')
             return await show_mentor_menu(update, context, show_welcome=False)
-
-        # Формируем структуру для хранения результатов по категориям
         rating_data = {}
         for result, student in results:
             key = (result.simulator, result.map_name, result.flight_mode)
             if key not in rating_data:
                 rating_data[key] = []
             rating_data[key].append((result.time, student))
-
-        # Формируем сообщение с рейтингом
         response = [f"Рейтинг группы {selected_group}:"]
 
         for (simulator, map_name, flight_mode), results in rating_data.items():
@@ -337,9 +329,8 @@ async def show_group_rating(update, context):
             for idx, (time, student) in enumerate(results, 1):
                 response.append(f"{idx}. {time:.3f} сек - {student.surname} {student.name}")
 
-        # Разбиваем сообщение на части, если оно слишком длинное
         message = "\n".join(response)
-        max_length = 4000  # Максимальная длина сообщения в Telegram
+        max_length = 4000
         if len(message) > max_length:
             parts = [message[i:i + max_length] for i in range(0, len(message), max_length)]
             for part in parts:
