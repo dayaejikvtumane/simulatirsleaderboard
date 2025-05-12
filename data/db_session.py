@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 SqlAlchemyBase = orm.declarative_base()
 
 __factory = None
+
+
 def global_init(db_file):
     global __factory
 
@@ -20,9 +22,10 @@ def global_init(db_file):
     engine = sa.create_engine(conn_str, echo=False)
     __factory = orm.sessionmaker(bind=engine)
 
-    from . import __all_models
+    from data.users import Student, Mentor, FlightResult
 
     SqlAlchemyBase.metadata.create_all(engine)
+
 
 def create_session() -> Session:
     global __factory
