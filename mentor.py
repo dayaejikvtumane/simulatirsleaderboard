@@ -7,6 +7,7 @@ from io import BytesIO
 from telegram import ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import MessageHandler, filters, ConversationHandler, CommandHandler, Application
 
+from asynchronous import async_handler
 from config import ADMIN_ID
 from data.db_session import create_session
 from data.users import Mentor, Student, FlightResult
@@ -15,8 +16,10 @@ from data.users import Mentor, Student, FlightResult
 MENTOR_NAME, MENTOR_SURNAME, MENTOR_GROUP = range(13, 16)
 CHECK_GROUP, CHECK_STUDENT, EDIT_OPTIONS, UPLOAD_CSV = range(16, 20)
 ADD_MENTOR = 20
+SHOW_GROUP_RATING = 19
 
 
+@async_handler
 async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
     if not mentor:
         session = create_session()
@@ -51,6 +54,7 @@ async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
     return ConversationHandler.END
 
 
+@async_handler
 async def register_mentor_name(update, context):
     name = update.message.text.strip()
     if not name.replace(' ', '').isalpha():
@@ -62,6 +66,7 @@ async def register_mentor_name(update, context):
     return MENTOR_SURNAME
 
 
+@async_handler
 async def register_mentor_surname(update, context):
     surname = update.message.text.strip()
     if not surname.replace(' ', '').isalpha():
@@ -73,6 +78,7 @@ async def register_mentor_surname(update, context):
     return MENTOR_GROUP
 
 
+@async_handler
 async def register_mentor_group(update, context):
     groups = update.message.text.strip()
     if not groups:
@@ -116,6 +122,7 @@ async def register_mentor_group(update, context):
         session.close()
 
 
+@async_handler
 async def check_student_results(update, context):
     session = create_session()
     try:
@@ -138,6 +145,7 @@ async def check_student_results(update, context):
         session.close()
 
 
+@async_handler
 async def process_check_group(update, context):
     context.user_data['check_group'] = update.message.text
     session = create_session()
@@ -160,6 +168,7 @@ async def process_check_group(update, context):
         session.close()
 
 
+@async_handler
 async def process_check_student(update, context):
     student_name = update.message.text
     session = create_session()
@@ -230,6 +239,7 @@ async def process_check_student(update, context):
         session.close()
 
 
+@async_handler
 async def handle_edit_choice(update, context):
     choice = update.message.text
     if choice == 'В меню':
@@ -281,6 +291,7 @@ async def handle_edit_choice(update, context):
         return EDIT_OPTIONS
 
 
+@async_handler
 async def handle_csv_upload(update, context):
     file = await update.message.document.get_file()
     csv_file = await file.download_to_drive()
@@ -349,6 +360,7 @@ async def handle_csv_upload(update, context):
     return await show_mentor_menu(update, context, show_welcome=False)
 
 
+@async_handler
 async def cancel_mentor_registration(update, context):
     await update.message.reply_text(
         'Операция отменена.',
@@ -389,33 +401,94 @@ def register_mentor_handlers(application: Application, admin_id):
         fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
     )
 
-    groups_handler = MessageHandler(
-        filters.Regex(r'^Мои группы$') & ~filters.COMMAND,
-        show_mentor_groups
+    # Обработчик просмотра рейтинга групп
+    group_rating_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex(r'^Мои группы$') & ~filters.COMMAND,
+                                     show_mentor_groups)],
+        states={
+            SHOW_GROUP_RATING: [MessageHandler(filters.TEXT & ~filters.COMMAND, show_group_rating)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
     )
 
     application.add_handler(check_results_handler)
-    application.add_handler(groups_handler)
     application.add_handler(add_mentor_handler)
+    application.add_handler(group_rating_handler)
 
-
+@async_handler
 async def show_mentor_groups(update, context):
     session = create_session()
     try:
         mentor = session.query(Mentor).filter(Mentor.telegram_id == update.effective_user.id).first()
         if not mentor:
             await update.message.reply_text('Вы не зарегистрированы как наставник.')
-            return
+            return ConversationHandler.END
 
+        groups = [g.strip() for g in mentor.group.split(',') if g.strip()]
+
+        if not groups:
+            await update.message.reply_text('У вас нет назначенных групп.')
+            return await show_mentor_menu(update, context, show_welcome=False)
+
+        keyboard = [[KeyboardButton(group)] for group in groups]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text(
-            f"Группы, которые вы ведёте:\n{mentor.group}",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        return await show_mentor_menu(update, context, mentor, show_welcome=False)
+            'Выберите группу для просмотра рейтинга:',
+            reply_markup=reply_markup)
+        return SHOW_GROUP_RATING
+
     finally:
         session.close()
 
 
+@async_handler
+async def show_group_rating(update, context):
+    selected_group = update.message.text
+    session = create_session()
+    try:
+        students = session.query(Student).filter(Student.group == selected_group).all()
+        if not students:
+            await update.message.reply_text(f'В группе {selected_group} нет студентов.')
+            return await show_mentor_menu(update, context, show_welcome=False)
+        results = session.query(FlightResult, Student).join(Student).filter(
+            Student.group == selected_group
+        ).order_by(
+            FlightResult.simulator,
+            FlightResult.map_name,
+            FlightResult.flight_mode,
+            FlightResult.time.asc()
+        ).all()
+
+        if not results:
+            await update.message.reply_text(f'В группе {selected_group} пока нет результатов.')
+            return await show_mentor_menu(update, context, show_welcome=False)
+        rating_data = {}
+        for result, student in results:
+            key = (result.simulator, result.map_name, result.flight_mode)
+            if key not in rating_data:
+                rating_data[key] = []
+            rating_data[key].append((result.time, student))
+        response = [f"Рейтинг группы {selected_group}:"]
+
+        for (simulator, map_name, flight_mode), results in rating_data.items():
+            response.append(f"\n{simulator}, {map_name}, {flight_mode}:")
+            for idx, (time, student) in enumerate(results, 1):
+                response.append(f"{idx}. {time:.3f} сек - {student.surname} {student.name}")
+
+        message = "\n".join(response)
+        max_length = 4000
+        if len(message) > max_length:
+            parts = [message[i:i + max_length] for i in range(0, len(message), max_length)]
+            for part in parts:
+                await update.message.reply_text(part)
+        else:
+            await update.message.reply_text(message)
+
+        return await show_mentor_menu(update, context, show_welcome=False)
+    finally:
+        session.close()
+
+@async_handler
 async def add_mentor_start(update, context):
     if not is_mentor(update.effective_user.id, ADMIN_ID):
         await update.message.reply_text('Эта команда доступна только администраторам.')
@@ -427,7 +500,7 @@ async def add_mentor_start(update, context):
     )
     return ADD_MENTOR
 
-
+@async_handler
 async def add_mentor_id(update, context):
     try:
         new_mentor_id = int(update.message.text.strip())

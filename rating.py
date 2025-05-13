@@ -1,12 +1,42 @@
+from datetime import datetime
+
 from telegram import ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import MessageHandler, filters, ConversationHandler, CommandHandler
+
+from asynchronous import async_handler
+from config import ADMIN_ID
 from data.db_session import create_session
 from data.users import FlightResult, Student
-from datetime import datetime
 
 RATING_SIMULATOR, RATING_MODE, RATING_MAP = range(10, 13)
 
 
+def is_mentor(telegram_id, admin_id):
+    try:
+        with open("admin.txt", "r") as f:
+            admin_ids = [line.strip() for line in f.readlines() if line.strip()]
+            return str(telegram_id) in admin_ids or telegram_id == admin_id
+    except FileNotFoundError:
+        return telegram_id == admin_id
+
+
+async def get_keyboard(telegram_id):
+    if is_mentor(telegram_id, ADMIN_ID):
+        return [
+            [KeyboardButton('Проверить результаты учеников')],
+            [KeyboardButton('Рейтинг')],
+            [KeyboardButton('Добавить наставника')],
+            [KeyboardButton('Мои группы')]
+        ]
+    else:
+        return [
+            [KeyboardButton('Добавить результат полёта')],
+            [KeyboardButton('Рейтинг')],
+            [KeyboardButton('Все мои результаты')]
+        ]
+
+
+@async_handler
 async def start_rating(update, context):
     keyboard = [
         [KeyboardButton("FPV Freerider")],
@@ -18,6 +48,7 @@ async def start_rating(update, context):
     return RATING_SIMULATOR
 
 
+@async_handler
 async def rating_simulator(update, context):
     context.user_data['rating_simulator'] = update.message.text
     keyboard = [
@@ -29,6 +60,7 @@ async def rating_simulator(update, context):
     return RATING_MODE
 
 
+@async_handler
 async def rating_mode(update, context):
     context.user_data['rating_mode'] = update.message.text
     keyboard = [
@@ -40,6 +72,7 @@ async def rating_mode(update, context):
     return RATING_MAP
 
 
+@async_handler
 async def rating_map(update, context):
     context.user_data['rating_map'] = update.message.text
     session = create_session()
@@ -62,7 +95,13 @@ async def rating_map(update, context):
         ).order_by(FlightResult.time.asc()).first() if current_student else None
 
         if not results and not user_best_result:
-            await update.message.reply_text('Нет результатов для выбранных параметров.')
+            keyboard = await get_keyboard(update.effective_user.id)
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+            await update.message.reply_text(
+                'Нет результатов для выбранных параметров.',
+                reply_markup=reply_markup
+            )
             return ConversationHandler.END
 
         current_date = datetime.now().strftime('%H:%M %d.%m.%Y г.')
@@ -93,6 +132,11 @@ async def rating_map(update, context):
                     f"Ваш лучший результат: {user_position}. {user_best_result.time:.3f} - {current_student.surname} {current_student.name}, гр. {current_student.group}")
 
         await update.message.reply_text("\n".join(response))
+
+        keyboard = await get_keyboard(update.effective_user.id)
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text('Выберите действие:', reply_markup=reply_markup)
+
     except Exception as e:
         await update.message.reply_text('Произошла ошибка при получении рейтинга. Попробуйте позже.')
     finally:
@@ -101,6 +145,24 @@ async def rating_map(update, context):
     return ConversationHandler.END
 
 
+@async_handler
+async def quick_rating_action(update, context):
+    text = update.message.text
+    if text.startswith("Рейтинг "):
+        parts = text.split()
+        if len(parts) == 4:
+            simulator = parts[1]
+            mode = parts[2]
+            map_name = parts[3]
+
+            context.user_data['rating_simulator'] = simulator
+            context.user_data['rating_mode'] = mode
+            context.user_data['rating_map'] = map_name
+            return await rating_map(update, context)
+    return await start_rating(update, context)
+
+
+@async_handler
 async def cancel_rating(update, context):
     await update.message.reply_text('Просмотр рейтинга отменен.')
     context.user_data.clear()
@@ -119,4 +181,10 @@ def register_rating_handlers(application):
         },
         fallbacks=[CommandHandler("cancel", cancel_rating)],
     )
+    quick_rating_handler = MessageHandler(
+        filters.Regex(r'^Рейтинг .+') & ~filters.COMMAND,
+        quick_rating_action
+    )
+
     application.add_handler(rating_handler)
+    application.add_handler(quick_rating_handler)

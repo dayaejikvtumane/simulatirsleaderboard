@@ -1,8 +1,11 @@
 import logging
+
+from telegram import ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
+
+from asynchronous import async_handler
 from config import BOT_TOKEN, ADMIN_ID
 from data.db_session import global_init, create_session
-from telegram import ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
 from data.users import Student, Mentor
 from mentor import MENTOR_NAME, MENTOR_SURNAME, MENTOR_GROUP, register_mentor_name, register_mentor_surname, \
     register_mentor_group, cancel_mentor_registration, register_mentor_handlers
@@ -27,6 +30,7 @@ def is_mentor(telegram_id):
         return telegram_id == ADMIN_ID
 
 
+@async_handler
 async def start(update, context):
     try:
         telegram_id = update.effective_user.id
