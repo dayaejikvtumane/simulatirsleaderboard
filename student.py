@@ -11,7 +11,7 @@ from data.users import FlightResult, Student, Mentor
 NAME, SURNAME, GROUP, BIRTH_DATE, CONFIRM = range(5)
 FLIGHT_SIMULATOR, FLIGHT_MODE, FLIGHT_MAP, FLIGHT_TIME, FLIGHT_PHOTO = range(5, 10)
 
-
+# меню
 @async_handler
 async def student_start(update, context):
     telegram_id = update.effective_user.id
@@ -44,7 +44,7 @@ async def student_start(update, context):
     )
     return NAME
 
-
+# рег имя
 @async_handler
 async def register_name(update, context):
     name = update.message.text.strip()
@@ -55,7 +55,7 @@ async def register_name(update, context):
     await update.message.reply_text('Теперь введите свою фамилию:')
     return SURNAME
 
-
+# рег фамилии
 @async_handler
 async def register_surname(update, context):
     surname = update.message.text.strip()
@@ -66,7 +66,7 @@ async def register_surname(update, context):
     await update.message.reply_text('Введите свою группу:')
     return GROUP
 
-
+# рег группы
 @async_handler
 async def register_group(update, context):
     group = update.message.text.strip()
@@ -77,7 +77,7 @@ async def register_group(update, context):
     await update.message.reply_text('Введите свою дату рождения в формате ДД.ММ.ГГГГ (например, 01.01.2000):')
     return BIRTH_DATE
 
-
+# рег др
 @async_handler
 async def register_birth_date(update, context):
     try:
@@ -106,7 +106,7 @@ async def register_birth_date(update, context):
     )
     return CONFIRM
 
-
+# отмена регистрации и ее повторение
 @async_handler
 async def confirm_registration(update, context):
     answer = update.message.text.lower()
@@ -178,6 +178,7 @@ async def confirm_registration(update, context):
     return ConversationHandler.END
 
 
+# добавление результатов полета
 @async_handler
 async def add_flight_result(update, context):
     keyboard = [
@@ -251,7 +252,7 @@ async def skip_photo(update, context):
     context.user_data['photo_data'] = None
     return await save_flight_result(update, context)
 
-
+# сохранение результатов полета
 @async_handler
 async def save_flight_result(update, context):
     session = create_session()
@@ -287,6 +288,8 @@ async def save_flight_result(update, context):
     context.user_data.clear()
     return ConversationHandler.END
 
+
+#  просмотр всех результатов ученика
 
 @async_handler
 async def view_my_results(update, context):
@@ -326,7 +329,7 @@ async def view_my_results(update, context):
     finally:
         session.close()
 
-
+# пропуск
 @async_handler
 async def cancel(update, context):
     keyboard = [

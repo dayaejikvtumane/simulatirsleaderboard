@@ -1,3 +1,4 @@
+# для асинхрона
 import asyncio
 from functools import wraps
 

@@ -19,6 +19,7 @@ ADD_MENTOR = 20
 SHOW_GROUP_RATING = 19
 
 
+# админ меню
 @async_handler
 async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
     if not mentor:
@@ -28,7 +29,6 @@ async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
         if not mentor:
             await update.message.reply_text('Вы не зарегистрированы как наставник.')
             return ConversationHandler.END
-
     keyboard = [
         [KeyboardButton('Проверить результаты учеников')],
         [KeyboardButton('Рейтинг')],
@@ -37,9 +37,7 @@ async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
 
     if is_mentor(update.effective_user.id, ADMIN_ID):
         keyboard.append([KeyboardButton('Добавить наставника')])
-
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
     if show_welcome:
         await update.message.reply_text(
             f'Добро пожаловать, {mentor.name} {mentor.surname}!\n'
@@ -53,45 +51,40 @@ async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
         )
     return ConversationHandler.END
 
-
+# рег имя админа
 @async_handler
 async def register_mentor_name(update, context):
     name = update.message.text.strip()
     if not name.replace(' ', '').isalpha():
-        await update.message.reply_text('Имя должно содержать только буквы и пробелы.')
+        await update.message.reply_text('Имя должно содержать только буквы.')
         return MENTOR_NAME
-
     context.user_data["mentor_name"] = name
     await update.message.reply_text('Введите вашу фамилию:')
     return MENTOR_SURNAME
 
-
+# рег фамилии админа
 @async_handler
 async def register_mentor_surname(update, context):
     surname = update.message.text.strip()
     if not surname.replace(' ', '').isalpha():
-        await update.message.reply_text('Фамилия должна содержать только буквы и пробелы.')
+        await update.message.reply_text('Фамилия должна содержать только буквы.')
         return MENTOR_SURNAME
-
     context.user_data["mentor_surname"] = surname
     await update.message.reply_text('Введите группы, которые вы ведёте (через запятую):')
     return MENTOR_GROUP
 
-
+# рег групп админа
 @async_handler
 async def register_mentor_group(update, context):
     groups = update.message.text.strip()
     if not groups:
         await update.message.reply_text('Пожалуйста, введите хотя бы одну группу.')
         return MENTOR_GROUP
-
     groups_list = [g.strip() for g in groups.split(',') if g.strip()]
     if not groups_list:
         await update.message.reply_text('Неверный формат групп. Пожалуйста, введите группы через запятую.')
         return MENTOR_GROUP
-
     context.user_data["mentor_groups"] = ", ".join(groups_list)
-
     try:
         session = create_session()
         mentor = Mentor(
@@ -100,10 +93,8 @@ async def register_mentor_group(update, context):
             group=context.user_data["mentor_groups"],
             telegram_id=update.effective_user.id
         )
-
         session.add(mentor)
         session.commit()
-
         await update.message.reply_text(
             f'Регистрация наставника завершена!\n'
             f'Имя: {mentor.name}\n'
@@ -111,9 +102,7 @@ async def register_mentor_group(update, context):
             f'Группы: {mentor.group}',
             reply_markup=ReplyKeyboardRemove()
         )
-
         return await show_mentor_menu(update, context, mentor)
-
     except Exception as e:
         session.rollback()
         await update.message.reply_text('Произошла ошибка при регистрации. Попробуйте позже.')
@@ -121,7 +110,7 @@ async def register_mentor_group(update, context):
     finally:
         session.close()
 
-
+# проверить право на просмотр и изменение результатов
 @async_handler
 async def check_student_results(update, context):
     session = create_session()
@@ -130,7 +119,6 @@ async def check_student_results(update, context):
         if not mentor:
             await update.message.reply_text('Вы не зарегистрированы как наставник.')
             return ConversationHandler.END
-
         groups = [g.strip() for g in mentor.group.split(',')]
 
         keyboard = [[KeyboardButton(group)] for group in groups]
@@ -144,7 +132,7 @@ async def check_student_results(update, context):
     finally:
         session.close()
 
-
+# проверка результатов
 @async_handler
 async def process_check_group(update, context):
     context.user_data['check_group'] = update.message.text
@@ -166,8 +154,7 @@ async def process_check_group(update, context):
         return CHECK_STUDENT
     finally:
         session.close()
-
-
+# редактирование результатов полета
 @async_handler
 async def process_check_student(update, context):
     student_name = update.message.text
@@ -184,15 +171,12 @@ async def process_check_student(update, context):
             Student.name == name,
             Student.group == context.user_data['check_group']
         ).first()
-
         if not student:
             await update.message.reply_text('Студент не найден.')
             return await show_mentor_menu(update, context, show_welcome=False)
-
         results = session.query(FlightResult).filter(
             FlightResult.student_id == student.id
         ).order_by(FlightResult.date_added.desc()).all()
-
         if not results:
             await update.message.reply_text('У этого студента пока нет результатов.')
             return await show_mentor_menu(update, context, show_welcome=False)
@@ -369,7 +353,7 @@ async def cancel_mentor_registration(update, context):
     context.user_data.clear()
     return ConversationHandler.END
 
-
+# проверка txt
 def is_mentor(telegram_id, admin_id):
     try:
         with open("admin.txt", "r") as f:
@@ -415,6 +399,8 @@ def register_mentor_handlers(application: Application, admin_id):
     application.add_handler(add_mentor_handler)
     application.add_handler(group_rating_handler)
 
+
+# просмотр рейтинга и право на него
 @async_handler
 async def show_mentor_groups(update, context):
     session = create_session()
@@ -488,6 +474,7 @@ async def show_group_rating(update, context):
     finally:
         session.close()
 
+# добавление нового наставника
 @async_handler
 async def add_mentor_start(update, context):
     if not is_mentor(update.effective_user.id, ADMIN_ID):

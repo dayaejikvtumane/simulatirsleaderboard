@@ -1,26 +1,28 @@
 import logging
-
 from telegram import ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
-
+from student import register_name, register_surname, register_group, register_birth_date, confirm_registration, \
+    register_student_handlers, NAME, SURNAME, GROUP, BIRTH_DATE, CONFIRM
+from rating import register_rating_handlers
 from asynchronous import async_handler
 from config import BOT_TOKEN, ADMIN_ID
 from data.db_session import global_init, create_session
 from data.users import Student, Mentor
 from mentor import MENTOR_NAME, MENTOR_SURNAME, MENTOR_GROUP, register_mentor_name, register_mentor_surname, \
     register_mentor_group, cancel_mentor_registration, register_mentor_handlers
-from student import NAME, SURNAME, GROUP, BIRTH_DATE, CONFIRM
 
+# настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
     filename='bot.log'
 )
 logger = logging.getLogger(__name__)
-
+# подключение к бд
 global_init("db/air_quant_15.sqlite")
 
 
+# проверка на наставника из txt
 def is_mentor(telegram_id):
     try:
         with open("admin.txt", "r") as f:
@@ -35,6 +37,7 @@ async def start(update, context):
     try:
         telegram_id = update.effective_user.id
         session = create_session()
+        # проверка на студента если зареган
         student = session.query(Student).filter(Student.telegram_id == telegram_id).first()
         if student:
             keyboard = [
@@ -49,6 +52,7 @@ async def start(update, context):
             )
             session.close()
             return ConversationHandler.END
+        # проверка наставника если зареган
         if is_mentor(telegram_id):
             mentor = session.query(Mentor).filter(Mentor.telegram_id == telegram_id).first()
             if mentor:
@@ -67,6 +71,7 @@ async def start(update, context):
                 session.close()
                 return ConversationHandler.END
             else:
+                # если наставник незареган
                 await update.message.reply_text(
                     'Привет, наставник! Давайте зарегистрируем вас в системе.\n'
                     'Введите ваше имя:',
@@ -75,7 +80,7 @@ async def start(update, context):
                 session.close()
                 return MENTOR_NAME
         else:
-            from student import register_name
+            # если ученик незареган
             await update.message.reply_text(
                 'Привет! Тебя нет в моей базе, давай регистрироваться.\n'
                 'Как тебя зовут?',
@@ -91,13 +96,12 @@ async def start(update, context):
         )
         return ConversationHandler.END
     finally:
+        # если в бд что-то есть
         if 'session' in locals():
             session.close()
 
 
 def register_handlers(application: Application):
-    from student import register_name, register_surname, register_group, register_birth_date, confirm_registration
-
     start_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
@@ -112,11 +116,7 @@ def register_handlers(application: Application):
         },
         fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
     )
-
     application.add_handler(start_handler)
-    from student import register_student_handlers
-    from rating import register_rating_handlers
-
     register_student_handlers(application)
     register_mentor_handlers(application, ADMIN_ID)
     register_rating_handlers(application)
@@ -127,7 +127,6 @@ def main():
         application = Application.builder().token(BOT_TOKEN).build()
         register_handlers(application)
         application.run_polling()
-
     except Exception as e:
         logger.critical(f"Ошибка при запуске бота: {str(e)}")
         raise

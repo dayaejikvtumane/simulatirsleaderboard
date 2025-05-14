@@ -11,6 +11,7 @@ from data.users import FlightResult, Student
 RATING_SIMULATOR, RATING_MODE, RATING_MAP = range(10, 13)
 
 
+# проверка на наставника
 def is_mentor(telegram_id, admin_id):
     try:
         with open("admin.txt", "r") as f:
@@ -20,6 +21,7 @@ def is_mentor(telegram_id, admin_id):
         return telegram_id == admin_id
 
 
+# панель быстрых команд
 async def get_keyboard(telegram_id):
     if is_mentor(telegram_id, ADMIN_ID):
         return [
@@ -36,6 +38,7 @@ async def get_keyboard(telegram_id):
         ]
 
 
+# общая схема просмотра рейтинга
 @async_handler
 async def start_rating(update, context):
     keyboard = [
@@ -119,6 +122,7 @@ async def rating_map(update, context):
 
         if current_student and user_best_result:
             in_top = any(result.student_id == current_student.id for result, _ in results)
+            # если не входит в топ 10 то выводится его лучший результат по выбранным критериям
             if not in_top:
                 user_position = session.query(FlightResult).filter(
                     FlightResult.simulator == context.user_data['rating_simulator'],
@@ -126,13 +130,10 @@ async def rating_map(update, context):
                     FlightResult.map_name == context.user_data['rating_map'],
                     FlightResult.time < user_best_result.time
                 ).count() + 1
-
                 response.append("")
                 response.append(
                     f"Ваш лучший результат: {user_position}. {user_best_result.time:.3f} - {current_student.surname} {current_student.name}, гр. {current_student.group}")
-
         await update.message.reply_text("\n".join(response))
-
         keyboard = await get_keyboard(update.effective_user.id)
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text('Выберите действие:', reply_markup=reply_markup)
@@ -144,7 +145,7 @@ async def rating_map(update, context):
 
     return ConversationHandler.END
 
-
+# быстрая оценка
 @async_handler
 async def quick_rating_action(update, context):
     text = update.message.text
@@ -161,7 +162,7 @@ async def quick_rating_action(update, context):
             return await rating_map(update, context)
     return await start_rating(update, context)
 
-
+# отмена просмотра рейтинга
 @async_handler
 async def cancel_rating(update, context):
     await update.message.reply_text('Просмотр рейтинга отменен.')
