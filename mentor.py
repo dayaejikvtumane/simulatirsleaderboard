@@ -8,7 +8,7 @@ from telegram import ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import MessageHandler, filters, ConversationHandler, CommandHandler, Application
 
 from asynchronous import async_handler
-from main import ADMIN_ID
+from config import ADMIN_ID
 from data.db_session import create_session
 from data.users import Mentor, Student, FlightResult
 
