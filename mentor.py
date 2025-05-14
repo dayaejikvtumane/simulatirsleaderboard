@@ -8,7 +8,7 @@ from telegram import ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import MessageHandler, filters, ConversationHandler, CommandHandler, Application
 
 from asynchronous import async_handler
-from config import ADMIN_ID
+from main import ADMIN_ID
 from data.db_session import create_session
 from data.users import Mentor, Student, FlightResult
 
@@ -371,41 +371,6 @@ def is_mentor(telegram_id, admin_id):
         return telegram_id == admin_id
 
 
-def register_mentor_handlers(application: Application, admin_id):
-    check_results_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(r'^Проверить результаты учеников$') & ~filters.COMMAND,
-                                     check_student_results)],
-        states={
-            CHECK_GROUP: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_check_group)],
-            CHECK_STUDENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_check_student)],
-            EDIT_OPTIONS: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_edit_choice)],
-            UPLOAD_CSV: [MessageHandler(filters.Document.FileExtension("csv"), handle_csv_upload)]
-        },
-        fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
-    )
-
-    add_mentor_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(r'^Добавить наставника$') & ~filters.COMMAND,
-                                     add_mentor_start)],
-        states={
-            ADD_MENTOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_mentor_id)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
-    )
-
-    # Обработчик просмотра рейтинга групп
-    group_rating_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(r'^Мои группы$') & ~filters.COMMAND,
-                                     show_mentor_groups)],
-        states={
-            SHOW_GROUP_RATING: [MessageHandler(filters.TEXT & ~filters.COMMAND, show_group_rating)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
-    )
-
-    application.add_handler(check_results_handler)
-    application.add_handler(add_mentor_handler)
-    application.add_handler(group_rating_handler)
 
 
 # просмотр рейтинга и право на него
@@ -541,3 +506,40 @@ async def add_mentor_id(update, context):
         return ADD_MENTOR
 
     return ConversationHandler.END
+
+
+def register_mentor_handlers(application: Application, admin_id):
+    check_results_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex(r'^Проверить результаты учеников$') & ~filters.COMMAND,
+                                     check_student_results)],
+        states={
+            CHECK_GROUP: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_check_group)],
+            CHECK_STUDENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_check_student)],
+            EDIT_OPTIONS: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_edit_choice)],
+            UPLOAD_CSV: [MessageHandler(filters.Document.FileExtension("csv"), handle_csv_upload)]
+        },
+        fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
+    )
+
+    add_mentor_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex(r'^Добавить наставника$') & ~filters.COMMAND,
+                                     add_mentor_start)],
+        states={
+            ADD_MENTOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_mentor_id)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
+    )
+
+    # Обработчик просмотра рейтинга групп
+    group_rating_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex(r'^Мои группы$') & ~filters.COMMAND,
+                                     show_mentor_groups)],
+        states={
+            SHOW_GROUP_RATING: [MessageHandler(filters.TEXT & ~filters.COMMAND, show_group_rating)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
+    )
+
+    application.add_handler(check_results_handler)
+    application.add_handler(add_mentor_handler)
+    application.add_handler(group_rating_handler)

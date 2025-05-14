@@ -5,12 +5,13 @@ from student import register_name, register_surname, register_group, register_bi
     register_student_handlers, NAME, SURNAME, GROUP, BIRTH_DATE, CONFIRM
 from rating import register_rating_handlers
 from asynchronous import async_handler
-from config import BOT_TOKEN, ADMIN_ID
 from data.db_session import global_init, create_session
 from data.users import Student, Mentor
 from mentor import MENTOR_NAME, MENTOR_SURNAME, MENTOR_GROUP, register_mentor_name, register_mentor_surname, \
     register_mentor_group, cancel_mentor_registration, register_mentor_handlers
 
+BOT_TOKEN = '7820464713:AAGuEdjwGPPsBnk5fTMKa7U3-0gub13c6eQ'
+ADMIN_ID = 2102313449
 # настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
