@@ -51,6 +51,7 @@ async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
         )
     return ConversationHandler.END
 
+
 # рег имя админа
 @async_handler
 async def register_mentor_name(update, context):
@@ -62,6 +63,7 @@ async def register_mentor_name(update, context):
     await update.message.reply_text('Введите вашу фамилию:')
     return MENTOR_SURNAME
 
+
 # рег фамилии админа
 @async_handler
 async def register_mentor_surname(update, context):
@@ -72,6 +74,7 @@ async def register_mentor_surname(update, context):
     context.user_data["mentor_surname"] = surname
     await update.message.reply_text('Введите группы, которые вы ведёте (через запятую):')
     return MENTOR_GROUP
+
 
 # рег групп админа
 @async_handler
@@ -110,6 +113,7 @@ async def register_mentor_group(update, context):
     finally:
         session.close()
 
+
 # проверить право на просмотр и изменение результатов
 @async_handler
 async def check_student_results(update, context):
@@ -131,6 +135,7 @@ async def check_student_results(update, context):
         return CHECK_GROUP
     finally:
         session.close()
+
 
 # проверка результатов
 @async_handler
@@ -154,6 +159,8 @@ async def process_check_group(update, context):
         return CHECK_STUDENT
     finally:
         session.close()
+
+
 # редактирование результатов полета
 @async_handler
 async def process_check_student(update, context):
@@ -353,6 +360,7 @@ async def cancel_mentor_registration(update, context):
     context.user_data.clear()
     return ConversationHandler.END
 
+
 # проверка txt
 def is_mentor(telegram_id, admin_id):
     try:
@@ -474,6 +482,7 @@ async def show_group_rating(update, context):
     finally:
         session.close()
 
+
 # добавление нового наставника
 @async_handler
 async def add_mentor_start(update, context):
@@ -482,37 +491,50 @@ async def add_mentor_start(update, context):
         return ConversationHandler.END
 
     await update.message.reply_text(
-        'Введите Telegram ID нового наставника:',
+        'Введите Telegram ID нового наставника(узнать его можно @getmyid_bot) или 0 если хотите в меню:',
         reply_markup=ReplyKeyboardRemove()
     )
     return ADD_MENTOR
+
 
 @async_handler
 async def add_mentor_id(update, context):
     try:
         new_mentor_id = int(update.message.text.strip())
-        if new_mentor_id <= 0:
-            raise ValueError("ID должен быть положительным числом")
-        with open("admin.txt", "a+") as f:
-            f.seek(0)
-            existing_ids = [line.strip() for line in f.readlines() if line.strip()]
-
-            if str(new_mentor_id) in existing_ids:
-                await update.message.reply_text('Этот наставник уже есть в списке.')
-                return await show_mentor_menu(update, context, show_welcome=False)
-
-            f.write(f"\n{new_mentor_id}")
-
-        await update.message.reply_text(
-            f"Наставник с ID {new_mentor_id} успешно добавлен!",
-            reply_markup=ReplyKeyboardMarkup(
-                [[KeyboardButton('Проверить результаты учеников')],
-                 [KeyboardButton('Рейтинг')],
-                 [KeyboardButton('Мои группы')],
-                 [KeyboardButton('Добавить наставника')]],
-                resize_keyboard=True
+        if new_mentor_id == 0:
+            await update.message.reply_text(
+                f"Выберите действие",
+                reply_markup=ReplyKeyboardMarkup(
+                    [[KeyboardButton('Проверить результаты учеников')],
+                     [KeyboardButton('Рейтинг')],
+                     [KeyboardButton('Мои группы')],
+                     [KeyboardButton('Добавить наставника')]],
+                    resize_keyboard=True
+                )
             )
-        )
+        else:
+            if new_mentor_id <= 0:
+                raise ValueError("ID должен быть положительным числом")
+            with open("admin.txt", "a+") as f:
+                f.seek(0)
+                existing_ids = [line.strip() for line in f.readlines() if line.strip()]
+
+                if str(new_mentor_id) in existing_ids:
+                    await update.message.reply_text('Этот наставник уже есть в списке.')
+                    return await show_mentor_menu(update, context, show_welcome=False)
+
+                f.write(f"\n{new_mentor_id}")
+
+            await update.message.reply_text(
+                f"Наставник с ID {new_mentor_id} успешно добавлен!",
+                reply_markup=ReplyKeyboardMarkup(
+                    [[KeyboardButton('Проверить результаты учеников')],
+                     [KeyboardButton('Рейтинг')],
+                     [KeyboardButton('Мои группы')],
+                     [KeyboardButton('Добавить наставника')]],
+                    resize_keyboard=True
+                )
+            )
 
     except ValueError as e:
         await update.message.reply_text(f"Некорректный ID: {e}\nПопробуйте еще раз.")
