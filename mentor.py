@@ -3,7 +3,7 @@ import os
 import tempfile
 from datetime import datetime
 from io import BytesIO
-
+from telegram.error import BadRequest
 from telegram import ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import MessageHandler, filters, ConversationHandler, CommandHandler, Application
 
@@ -480,26 +480,47 @@ async def add_mentor_id(update, context):
         else:
             if new_mentor_id <= 0:
                 raise ValueError("ID должен быть положительным числом")
-            with open("admin.txt", "a+") as f:
-                f.seek(0)
-                existing_ids = [line.strip() for line in f.readlines() if line.strip()]
 
-                if str(new_mentor_id) in existing_ids:
+            session = create_session()
+            try:
+                # есть ли такой пользователь в студентах
+                student = session.query(Student).filter(Student.telegram_id == new_mentor_id).first()
+                if student:
+                    session.query(FlightResult).filter(FlightResult.student_id == student.id).delete()
+                    session.delete(student)
+                    session.commit()
+                    try:
+                        await context.bot.send_message(
+                            chat_id=new_mentor_id,
+                            text="Вас назначили наставником. Пожалуйста, перезапустите бота командой /start для завершения регистрации."
+                        )
+                    except BadRequest:
+                        pass
+
+                existing_mentor = session.query(Mentor).filter(Mentor.telegram_id == new_mentor_id).first()
+                if existing_mentor:
                     await update.message.reply_text('Этот наставник уже есть в списке.')
                     return await show_mentor_menu(update, context, show_welcome=False)
+                with open("admin.txt", "a+") as f:
+                    f.seek(0)
+                    existing_ids = [line.strip() for line in f.readlines() if line.strip()]
+                    if str(new_mentor_id) in existing_ids:
+                        await update.message.reply_text('Этот наставник уже есть в списке.')
+                        return await show_mentor_menu(update, context, show_welcome=False)
+                    f.write(f"\n{new_mentor_id}")
 
-                f.write(f"\n{new_mentor_id}")
-
-            await update.message.reply_text(
-                f"Наставник с ID {new_mentor_id} успешно добавлен!",
-                reply_markup=ReplyKeyboardMarkup(
-                    [[KeyboardButton('Проверить результаты учеников')],
-                     [KeyboardButton('Рейтинг')],
-                     [KeyboardButton('Мои группы')],
-                     [KeyboardButton('Добавить наставника')]],
-                    resize_keyboard=True
+                await update.message.reply_text(
+                    f"Наставник с ID {new_mentor_id} успешно добавлен!",
+                    reply_markup=ReplyKeyboardMarkup(
+                        [[KeyboardButton('Проверить результаты учеников')],
+                         [KeyboardButton('Рейтинг')],
+                         [KeyboardButton('Мои группы')],
+                         [KeyboardButton('Добавить наставника')]],
+                        resize_keyboard=True
+                    )
                 )
-            )
+            finally:
+                session.close()
 
     except ValueError as e:
         await update.message.reply_text(f"Некорректный ID: {e}\nПопробуйте еще раз.")
