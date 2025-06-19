@@ -17,8 +17,11 @@ MENTOR_NAME, MENTOR_SURNAME, MENTOR_GROUP = range(13, 16)
 CHECK_GROUP, CHECK_STUDENT, EDIT_OPTIONS, UPLOAD_CSV = range(16, 20)
 ADD_MENTOR = 20
 SHOW_GROUP_RATING = 19
-
-
+SELECT_ADD_METHOD = 21
+INPUT_MENTORID = 22
+SELECT_STUDENT = 23
+CONFIRM_ADD = 24
+DELETE_MENTOR = 25
 # админ меню
 @async_handler
 async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
@@ -29,15 +32,19 @@ async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
         if not mentor:
             await update.message.reply_text('Вы не зарегистрированы как наставник.')
             return ConversationHandler.END
+
     keyboard = [
         [KeyboardButton('Проверить результаты учеников')],
         [KeyboardButton('Рейтинг')],
         [KeyboardButton('Мои группы')]
     ]
-
     if is_mentor(update.effective_user.id, ADMIN_ID):
         keyboard.append([KeyboardButton('Добавить наставника')])
+        if update.effective_user.id == ADMIN_ID:
+            keyboard.append([KeyboardButton('Удалить наставника')])
+
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
     if show_welcome:
         await update.message.reply_text(
             f'Добро пожаловать, {mentor.name} {mentor.surname}!\n'
@@ -49,6 +56,121 @@ async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
             'Выберите действие:',
             reply_markup=reply_markup
         )
+    return ConversationHandler.END
+
+@async_handler
+async def delete_mentor_start(update, context):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text('Эта команда доступна только главному администратору.')
+        return await show_mentor_menu(update, context, show_welcome=False)
+
+    session = create_session()
+    try:
+        mentors = session.query(Mentor).all()
+        if not mentors:
+            await update.message.reply_text('Нет зарегистрированных наставников.')
+            return await show_mentor_menu(update, context, show_welcome=False)
+
+        keyboard = []
+        for mentor in mentors:
+            if mentor.telegram_id != ADMIN_ID:
+                btn_text = f"{mentor.surname} {mentor.name} (ID: {mentor.telegram_id})"
+                keyboard.append([KeyboardButton(btn_text)])
+
+        if not keyboard:
+            await update.message.reply_text('Нет других наставников для удаления.')
+            return await show_mentor_menu(update, context, show_welcome=False)
+
+        keyboard.append([KeyboardButton('Назад')])
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+        await update.message.reply_text(
+            'Выберите наставника для удаления:',
+            reply_markup=reply_markup
+        )
+        return DELETE_MENTOR
+    finally:
+        session.close()
+
+
+@async_handler
+async def confirm_delete_mentor(update, context):
+    if update.message.text == 'Назад':
+        return await show_mentor_menu(update, context, show_welcome=False)
+
+    try:
+        telegram_id = int(update.message.text.split('(ID: ')[1].rstrip(')'))
+    except (IndexError, ValueError):
+        await update.message.reply_text('Ошибка')
+        return DELETE_MENTOR
+
+    context.user_data['mentor_to_delete_id'] = telegram_id
+
+    keyboard = [
+        [KeyboardButton('Да')],
+        [KeyboardButton('Нет')]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+    await update.message.reply_text(
+        f'Вы уверены, что хотите удалить наставника с (ID: {telegram_id})',
+        reply_markup=reply_markup
+    )
+    return CONFIRM_ADD
+
+
+@async_handler
+async def execute_delete_mentor(update, context):
+    if update.message.text == 'Нет':
+        return await show_mentor_menu(update, context, show_welcome=False)
+    mentor_id = context.user_data.get('mentor_to_delete_id')
+    if not mentor_id:
+        await update.message.reply_text('Ошибка: ID не найден.')
+        return await show_mentor_menu(update, context, show_welcome=False)
+    session = create_session()
+    try:
+        mentor = session.query(Mentor).filter(Mentor.telegram_id == mentor_id).first()
+        if mentor:
+            mentor_name = f"{mentor.name} {mentor.surname}"
+            session.delete(mentor)
+            session.commit()
+            try:
+                await context.bot.send_message(
+                    chat_id=mentor_id,
+                    text=f"Вы были удалены из списка наставников.\n"
+                         f"Для повторной регистрации используйте команду /start",
+                    reply_markup=ReplyKeyboardRemove()
+                )
+            except BadRequest as e:
+                print(f"Не удалось отправить сообщение удаленному наставнику {mentor_id}: {e}")
+
+        with open("admin.txt", "r+") as f:
+            lines = f.readlines()
+            f.seek(0)
+            for line in lines:
+                if line.strip() != str(mentor_id):
+                    f.write(line)
+            f.truncate()
+
+        keyboard = [
+            [KeyboardButton('Проверить результаты учеников')],
+            [KeyboardButton('Рейтинг')],
+            [KeyboardButton('Мои группы')],
+            [KeyboardButton('Добавить наставника')],
+        ]
+        if update.effective_user.id == ADMIN_ID:
+            keyboard.append([KeyboardButton('Удалить наставника')])
+
+        await update.message.reply_text(
+            f'Наставник с ID {mentor_id} успешно удален!',
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
+    except Exception as e:
+        session.rollback()
+        await update.message.reply_text(f'Ошибка при удалении: {str(e)}')
+    finally:
+        session.close()
+
     return ConversationHandler.END
 
 
@@ -453,78 +575,188 @@ async def show_group_rating(update, context):
 async def add_mentor_start(update, context):
     if not is_mentor(update.effective_user.id, ADMIN_ID):
         await update.message.reply_text('Эта команда доступна только администраторам.')
-        return ConversationHandler.END
+        return await show_mentor_menu(update, context, show_welcome=False)
+
+    keyboard = [
+        [KeyboardButton('Добавить по ID')],
+        [KeyboardButton('Выбрать из студентов')],
+        [KeyboardButton('Назад')]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
     await update.message.reply_text(
-        'Введите Telegram ID нового наставника(узнать его можно @getmyid_bot) или 0 если хотите в меню:',
-        reply_markup=ReplyKeyboardRemove()
+        'Выберите способ добавления наставника:',
+        reply_markup=reply_markup
     )
-    return ADD_MENTOR
+    return SELECT_ADD_METHOD
 
 
 @async_handler
-async def add_mentor_id(update, context):
-    try:
-        new_mentor_id = int(update.message.text.strip())
-        if new_mentor_id == 0:
+async def select_add_method(update, context):
+    choice = update.message.text
+    if choice == 'Назад':
+        return await show_mentor_menu(update, context, show_welcome=False)
+    elif choice == 'Добавить по ID':
+        keyboard = [
+            [KeyboardButton('Назад')]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+        await update.message.reply_text(
+            'Введите Telegram ID нового наставника (можно узнать через @getmyid_bot) или нажмите "Назад":',
+            reply_markup=reply_markup
+        )
+        return INPUT_MENTORID
+    elif choice == 'Выбрать из студентов':
+        session = create_session()
+        try:
+            students = session.query(Student).all()
+            if not students:
+                await update.message.reply_text('Нет зарегистрированных студентов.')
+                return await show_mentor_menu(update, context, show_welcome=False)
+
+            # Группируем студентов по 2 в строку для компактности
+            keyboard = []
+            temp_row = []
+            for student in students:
+                btn = KeyboardButton(f"{student.surname} {student.name} (ID: {student.telegram_id})")
+                temp_row.append(btn)
+                if len(temp_row) >= 2:
+                    keyboard.append(temp_row)
+                    temp_row = []
+            if temp_row:
+                keyboard.append(temp_row)
+
+            keyboard.append([KeyboardButton('Назад')])
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
             await update.message.reply_text(
-                f"Выберите действие",
-                reply_markup=ReplyKeyboardMarkup(
-                    [[KeyboardButton('Проверить результаты учеников')],
-                     [KeyboardButton('Рейтинг')],
-                     [KeyboardButton('Мои группы')],
-                     [KeyboardButton('Добавить наставника')]],
-                    resize_keyboard=True
-                )
+                'Выберите студента для назначения наставником:',
+                reply_markup=reply_markup
             )
-        else:
-            if new_mentor_id <= 0:
-                raise ValueError("ID должен быть положительным числом")
+            return SELECT_STUDENT
+        finally:
+            session.close()
+    else:
+        await update.message.reply_text('Неизвестная команда')
+        return SELECT_ADD_METHOD
 
-            session = create_session()
-            try:
-                # есть ли такой пользователь в студентах
-                student = session.query(Student).filter(Student.telegram_id == new_mentor_id).first()
-                if student:
-                    session.query(FlightResult).filter(FlightResult.student_id == student.id).delete()
-                    session.delete(student)
-                    session.commit()
-                    try:
-                        await context.bot.send_message(
-                            chat_id=new_mentor_id,
-                            text="Вас назначили наставником. Пожалуйста, перезапустите бота командой /start для завершения регистрации."
-                        )
-                    except BadRequest:
-                        pass
 
-                existing_mentor = session.query(Mentor).filter(Mentor.telegram_id == new_mentor_id).first()
-                if existing_mentor:
-                    await update.message.reply_text('Этот наставник уже есть в списке.')
-                    return await show_mentor_menu(update, context, show_welcome=False)
-                with open("admin.txt", "a+") as f:
-                    f.seek(0)
-                    existing_ids = [line.strip() for line in f.readlines() if line.strip()]
-                    if str(new_mentor_id) in existing_ids:
-                        await update.message.reply_text('Этот наставник уже есть в списке.')
-                        return await show_mentor_menu(update, context, show_welcome=False)
-                    f.write(f"\n{new_mentor_id}")
+@async_handler
+async def input_mentor_id(update, context):
+    user_input = update.message.text.strip()
+    # Обработка кнопки "Назад"
+    if user_input.lower() == 'назад':
+        return await add_mentor_start(update, context)
+    try:
+        mentor_id = int(user_input)
+        if mentor_id <= 0:
+            raise ValueError("ID должен быть положительным числом")
+        context.user_data['new_mentor_id'] = mentor_id
+        keyboard = [
+            [KeyboardButton('Подтвердить')],
+            [KeyboardButton('Назад')]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-                await update.message.reply_text(
-                    f"Наставник с ID {new_mentor_id} успешно добавлен!",
-                    reply_markup=ReplyKeyboardMarkup(
-                        [[KeyboardButton('Проверить результаты учеников')],
-                         [KeyboardButton('Рейтинг')],
-                         [KeyboardButton('Мои группы')],
-                         [KeyboardButton('Добавить наставника')]],
-                        resize_keyboard=True
-                    )
-                )
-            finally:
-                session.close()
+        await update.message.reply_text(
+            f'Вы хотите добавить наставника с ID: {mentor_id}?',
+            reply_markup=reply_markup
+        )
+        return CONFIRM_ADD
+    except ValueError:
+        keyboard = [
+            [KeyboardButton('Назад')]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-    except ValueError as e:
-        await update.message.reply_text(f"Некорректный ID: {e}\nПопробуйте еще раз.")
-        return ADD_MENTOR
+        await update.message.reply_text(
+            'Некорректный ID. Пожалуйста, введите числовой ID или нажмите "Назад".',
+            reply_markup=reply_markup
+        )
+        return INPUT_MENTORID
+
+@async_handler
+async def select_student(update, context):
+    if update.message.text == 'Назад':
+        return await add_mentor_start(update, context)
+
+    try:
+
+        telegram_id = int(update.message.text.split('(ID: ')[1].rstrip(')'))
+    except (IndexError, ValueError):
+        await update.message.reply_text('Ошибка')
+        return SELECT_STUDENT
+
+    context.user_data['new_mentor_id'] = telegram_id
+
+    keyboard = [
+        [KeyboardButton('Подтвердить')],
+        [KeyboardButton('Назад')]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+    await update.message.reply_text(
+        f'Вы хотите назначить этого студента наставником? (ID: {telegram_id})',
+        reply_markup=reply_markup
+    )
+    return CONFIRM_ADD
+
+
+@async_handler
+async def confirm_add_mentor(update, context):
+    if update.message.text == 'Назад':
+        return await add_mentor_start(update, context)
+
+    new_mentor_id = context.user_data.get('new_mentor_id')
+    if not new_mentor_id:
+        await update.message.reply_text('Ошибка: ID наставника не найден.')
+        return await show_mentor_menu(update, context, show_welcome=False)
+
+    session = create_session()
+    try:
+        student = session.query(Student).filter(Student.telegram_id == new_mentor_id).first()
+        if student:
+            session.query(FlightResult).filter(FlightResult.student_id == student.id).delete()
+            session.delete(student)
+            session.commit()
+
+        existing_mentor = session.query(Mentor).filter(Mentor.telegram_id == new_mentor_id).first()
+        if existing_mentor:
+            await update.message.reply_text('Этот пользователь уже является наставником.')
+            return await show_mentor_menu(update, context, show_welcome=False)
+        with open("admin.txt", "a+") as f:
+            f.seek(0)
+            existing_ids = [line.strip() for line in f.readlines() if line.strip()]
+            if str(new_mentor_id) in existing_ids:
+                await update.message.reply_text('Этот пользователь уже есть в списке наставников.')
+                return await show_mentor_menu(update, context, show_welcome=False)
+
+            f.write(f"\n{new_mentor_id}")
+
+        try:
+            await context.bot.send_message(
+                chat_id=new_mentor_id,
+                text="Вас назначили наставником. Пожалуйста, перезапустите бота командой /start для завершения регистрации."
+            )
+        except BadRequest as e:
+            print(f"Не удалось отправить сообщение новому наставнику: {e}")
+
+        await update.message.reply_text(
+            f'Пользователь с ID {new_mentor_id} успешно добавлен как наставник!',
+            reply_markup=ReplyKeyboardMarkup(
+                [[KeyboardButton('Проверить результаты учеников')],
+                 [KeyboardButton('Рейтинг')],
+                 [KeyboardButton('Мои группы')],
+                 [KeyboardButton('Добавить наставника')]],
+                resize_keyboard=True
+            )
+        )
+    except Exception as e:
+        session.rollback()
+        await update.message.reply_text(f'Ошибка при добавлении наставника: {str(e)}')
+    finally:
+        session.close()
 
     return ConversationHandler.END
 
@@ -546,12 +778,14 @@ def register_mentor_handlers(application: Application, admin_id):
         entry_points=[MessageHandler(filters.Regex(r'^Добавить наставника$') & ~filters.COMMAND,
                                      add_mentor_start)],
         states={
-            ADD_MENTOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_mentor_id)],
+            SELECT_ADD_METHOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, select_add_method)],
+            INPUT_MENTORID: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_mentor_id)],
+            SELECT_STUDENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, select_student)],
+            CONFIRM_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_add_mentor)],
         },
         fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
     )
 
-    # Обработчик просмотра рейтинга групп
     group_rating_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex(r'^Мои группы$') & ~filters.COMMAND,
                                      show_mentor_groups)],
@@ -560,7 +794,17 @@ def register_mentor_handlers(application: Application, admin_id):
         },
         fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
     )
+    delete_mentor_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex(r'^Удалить наставника$') & ~filters.COMMAND,
+                                     delete_mentor_start)],
+        states={
+            DELETE_MENTOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_delete_mentor)],
+            CONFIRM_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, execute_delete_mentor)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel_mentor_registration)],
+    )
 
+    application.add_handler(delete_mentor_handler)
     application.add_handler(check_results_handler)
     application.add_handler(add_mentor_handler)
     application.add_handler(group_rating_handler)
