@@ -125,12 +125,10 @@ async def confirm_delete_mentor(update, context):
 async def execute_delete_mentor(update, context):
     if update.message.text == 'Нет':
         return await show_mentor_menu(update, context, show_welcome=False)
-
     mentor_id = context.user_data.get('mentor_to_delete_id')
     if not mentor_id:
         await update.message.reply_text('Ошибка: ID не найден.')
         return await show_mentor_menu(update, context, show_welcome=False)
-
     session = create_session()
     try:
         mentor = session.query(Mentor).filter(Mentor.telegram_id == mentor_id).first()
@@ -141,11 +139,10 @@ async def execute_delete_mentor(update, context):
             try:
                 keyboard = [[KeyboardButton('/start')]]
                 reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
                 await context.bot.send_message(
                     chat_id=mentor_id,
-                    text="Ваши права наставника были отозваны.\n"
-                         "Вы можете зарегистрироваться как ученик, нажав кнопку ниже:",
+                    text='Вы больше не имеете прав наставника\n'
+                         'Вы можете зарегистрироваться как ученик, нажав /start',
                     reply_markup=reply_markup
                 )
             except BadRequest as e:
