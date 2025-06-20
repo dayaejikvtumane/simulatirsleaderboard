@@ -8,12 +8,19 @@ def async_handler(func):
     async def wrapper(*args, **kwargs):
         try:
             return await func(*args, **kwargs)
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             print(f"Ошибка в асинхронном обработчике: {e}")
             raise
 
     return wrapper
 
+
 async def run_in_executor(func, *args):
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, func, *args)
+    try:
+        return await loop.run_in_executor(None, func, *args)
+    except Exception as e:
+        print(f"Ошибка {e}")
+        raise

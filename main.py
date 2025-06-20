@@ -10,6 +10,7 @@ from data.db_session import global_init, create_session
 from data.users import Student, Mentor
 from mentor import MENTOR_NAME, MENTOR_SURNAME, MENTOR_GROUP, register_mentor_name, register_mentor_surname, \
     register_mentor_group, cancel_mentor_registration, register_mentor_handlers
+
 # настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',

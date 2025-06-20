@@ -24,18 +24,21 @@ def is_mentor(telegram_id, admin_id):
 # панель быстрых команд
 async def get_keyboard(telegram_id):
     if is_mentor(telegram_id, ADMIN_ID):
-        return [
+        keyboard = [
             [KeyboardButton('Проверить результаты учеников')],
             [KeyboardButton('Рейтинг')],
-            [KeyboardButton('Добавить наставника')],
-            [KeyboardButton('Мои группы')]
-        ]
+            [KeyboardButton('Мои группы')],
+            [KeyboardButton('Добавить наставника')]]
+        if telegram_id == ADMIN_ID:
+            keyboard.append([KeyboardButton('Удалить наставника')])
+
     else:
-        return [
+        keyboard = [
             [KeyboardButton('Добавить результат полёта')],
             [KeyboardButton('Рейтинг')],
             [KeyboardButton('Все мои результаты')]
         ]
+    return keyboard
 
 
 # общая схема просмотра рейтинга
@@ -138,12 +141,11 @@ async def rating_map(update, context):
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text('Выберите действие:', reply_markup=reply_markup)
 
+        return ConversationHandler.END
     except Exception as e:
-        await update.message.reply_text('Произошла ошибка при получении рейтинга. Попробуйте позже.')
-    finally:
-        session.close()
+        await update.message.reply_text(f'Ошибка: {str(e)}')
+        return ConversationHandler.END
 
-    return ConversationHandler.END
 
 # быстрая оценка
 @async_handler
@@ -161,6 +163,7 @@ async def quick_rating_action(update, context):
             context.user_data['rating_map'] = map_name
             return await rating_map(update, context)
     return await start_rating(update, context)
+
 
 # отмена просмотра рейтинга
 @async_handler

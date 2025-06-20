@@ -38,6 +38,8 @@ async def show_mentor_menu(update, context, mentor=None, show_welcome=True):
         [KeyboardButton('Рейтинг')],
         [KeyboardButton('Мои группы')]
     ]
+
+    # Всегда проверяем is_mentor, а не полагаемся только на переданного ментора
     if is_mentor(update.effective_user.id, ADMIN_ID):
         keyboard.append([KeyboardButton('Добавить наставника')])
         if update.effective_user.id == ADMIN_ID:
@@ -539,10 +541,21 @@ async def show_group_rating(update, context):
             FlightResult.flight_mode,
             FlightResult.time.asc()
         ).all()
-
         if not results:
             await update.message.reply_text(f'В группе {selected_group} пока нет результатов.')
-            return await show_mentor_menu(update, context, show_welcome=False)
+            keyboard = [
+                [KeyboardButton('Проверить результаты учеников')],
+                [KeyboardButton('Рейтинг')],
+                [KeyboardButton('Мои группы')]
+            ]
+            if is_mentor(update.effective_user.id, ADMIN_ID):
+                keyboard.append([KeyboardButton('Добавить наставника')])
+                if update.effective_user.id == ADMIN_ID:
+                    keyboard.append([KeyboardButton('Удалить наставника')])
+
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            await update.message.reply_text('Выберите действие:', reply_markup=reply_markup)
+            return ConversationHandler.END
         rating_data = {}
         for result, student in results:
             key = (result.simulator, result.map_name, result.flight_mode)
@@ -550,7 +563,6 @@ async def show_group_rating(update, context):
                 rating_data[key] = []
             rating_data[key].append((result.time, student))
         response = [f"Рейтинг группы {selected_group}:"]
-
         for (simulator, map_name, flight_mode), results in rating_data.items():
             response.append(f"\n{simulator}, {map_name}, {flight_mode}:")
             for idx, (time, student) in enumerate(results, 1):
@@ -564,8 +576,8 @@ async def show_group_rating(update, context):
                 await update.message.reply_text(part)
         else:
             await update.message.reply_text(message)
-
-        return await show_mentor_menu(update, context, show_welcome=False)
+        mentor = session.query(Mentor).filter(Mentor.telegram_id == update.effective_user.id).first()
+        return await show_mentor_menu(update, context, mentor=mentor, show_welcome=False)
     finally:
         session.close()
 
