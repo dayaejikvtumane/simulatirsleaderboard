@@ -125,10 +125,12 @@ async def confirm_delete_mentor(update, context):
 async def execute_delete_mentor(update, context):
     if update.message.text == 'Нет':
         return await show_mentor_menu(update, context, show_welcome=False)
+
     mentor_id = context.user_data.get('mentor_to_delete_id')
     if not mentor_id:
         await update.message.reply_text('Ошибка: ID не найден.')
         return await show_mentor_menu(update, context, show_welcome=False)
+
     session = create_session()
     try:
         mentor = session.query(Mentor).filter(Mentor.telegram_id == mentor_id).first()
@@ -137,15 +139,17 @@ async def execute_delete_mentor(update, context):
             session.delete(mentor)
             session.commit()
             try:
+                keyboard = [[KeyboardButton('/start')]]
+                reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
                 await context.bot.send_message(
                     chat_id=mentor_id,
-                    text=f"Вы были удалены из списка наставников.\n"
-                         f"Для повторной регистрации используйте команду /start",
-                    reply_markup=ReplyKeyboardRemove()
+                    text="Ваши права наставника были отозваны.\n"
+                         "Вы можете зарегистрироваться как ученик, нажав кнопку ниже:",
+                    reply_markup=reply_markup
                 )
             except BadRequest as e:
                 print(f"Не удалось отправить сообщение удаленному наставнику {mentor_id}: {e}")
-
         with open("admin.txt", "r+") as f:
             lines = f.readlines()
             f.seek(0)
@@ -153,7 +157,6 @@ async def execute_delete_mentor(update, context):
                 if line.strip() != str(mentor_id):
                     f.write(line)
             f.truncate()
-
         keyboard = [
             [KeyboardButton('Проверить результаты учеников')],
             [KeyboardButton('Рейтинг')],
@@ -613,7 +616,6 @@ async def select_add_method(update, context):
             [KeyboardButton('Назад')]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
         await update.message.reply_text(
             'Введите Telegram ID нового наставника (можно узнать через @getmyid_bot) или нажмите "Назад":',
             reply_markup=reply_markup
@@ -626,8 +628,6 @@ async def select_add_method(update, context):
             if not students:
                 await update.message.reply_text('Нет зарегистрированных студентов.')
                 return await show_mentor_menu(update, context, show_welcome=False)
-
-            # Группируем студентов по 2 в строку для компактности
             keyboard = []
             temp_row = []
             for student in students:
@@ -657,7 +657,6 @@ async def select_add_method(update, context):
 @async_handler
 async def input_mentor_id(update, context):
     user_input = update.message.text.strip()
-    # Обработка кнопки "Назад"
     if user_input.lower() == 'назад':
         return await add_mentor_start(update, context)
     try:

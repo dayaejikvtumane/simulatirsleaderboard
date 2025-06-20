@@ -62,6 +62,8 @@ async def start(update, context):
                     [KeyboardButton('Добавить наставника')],
                     [KeyboardButton('Мои группы')]
                 ]
+                if update.effective_user.id == ADMIN_ID:
+                    keyboard.append([KeyboardButton('Удалить наставника')])
                 reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
                 await update.message.reply_text(
                     f'Добро пожаловать, наставник {mentor.name} {mentor.surname}!\n'
